@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { Upload, AlertCircle } from "../lib/icons";
 import { useFormContext } from "../context/FormContext";
 import { Button } from "./ui/button";
+import ImageViewer from "./ImageViewer";
 
 const BRAND = "#D6697C";
 const TEXT_COLOR = "#535861";
@@ -53,10 +54,10 @@ export default function UltrasoundUpload() {
 
       {preview ? (
         <div className="rounded-2xl overflow-hidden border border-border">
-          <img
+          <ImageViewer
             src={preview}
-            alt="Ultrasound preview"
-            className="w-full h-52 object-contain bg-muted"
+            alt="The ultrasound image you attached."
+            className="p-3"
           />
           <div className="flex gap-2 p-3 bg-muted">
             <Button

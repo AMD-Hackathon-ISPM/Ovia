@@ -10,7 +10,10 @@ export type Step =
   | "clinical"
   | "ultrasound"
   | "review"
-  | "results";
+  | "results"
+  // Terminal technical failure (frontend-architecture.md §7.1). Reached only
+  // by explicit transition, never by goToNextStep, and renders no output.
+  | "error";
 
 export interface ClinicalData {
   heightCm: string;

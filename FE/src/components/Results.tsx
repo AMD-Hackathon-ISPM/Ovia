@@ -1,6 +1,8 @@
 import { useMemo } from "react";
 import { useFormContext } from "../context/FormContext";
 import { evaluateRisks, type RiskResult } from "../lib/riskLogic";
+import { useSubmission } from "@/context/SubmissionContext";
+import InspectionFigure from "./InspectionFigure";
 
 const BRAND = "#D6697C";
 const TEXT_COLOR = "#535861";
@@ -53,6 +55,7 @@ const CONDITION_TITLE: Record<string, string> = {
 
 export default function Results() {
   const { state } = useFormContext();
+  const { state: submission } = useSubmission();
   const { clinical } = state.data;
 
   const results = useMemo(() => evaluateRisks(clinical), [clinical]);
@@ -78,6 +81,15 @@ export default function Results() {
       </div>
 
       <RecommendedAction results={results} />
+
+      {/* FE-8. Rendered after the recommendation, and optional: hiding or
+          removing it changes nothing above it. */}
+      {state.data.ultrasoundImage && submission.status === "success" && (
+        <InspectionFigure
+          src={state.data.ultrasoundImage}
+          regions={submission.outcome.inspection ?? []}
+        />
+      )}
     </div>
   );
 }

@@ -13,6 +13,8 @@ interface SelectContextValue {
   triggerRef: React.RefObject<HTMLButtonElement | null>
   listRef: React.RefObject<HTMLDivElement | null>
   labelId: string
+  /** value -> what the trigger should display for it */
+  labels: Record<string, React.ReactNode>
 }
 
 const SelectContext = React.createContext<SelectContextValue | null>(null)
@@ -26,6 +28,41 @@ function useSelectContext(name: string) {
 let _idCounter = 0
 function nextId() {
   return `select-${++_idCounter}`
+}
+
+/**
+ * The trigger has to show the selected option's label even while the list is
+ * closed and unmounted, so labels are read from the children tree rather than
+ * registered by the items at mount time.
+ */
+function collectItemLabels(
+  node: React.ReactNode,
+  into: Record<string, React.ReactNode>
+): Record<string, React.ReactNode> {
+  React.Children.forEach(node, (child) => {
+    if (!React.isValidElement(child)) return
+    const props = child.props as { value?: string; children?: React.ReactNode }
+    if (child.type === SelectItem && typeof props.value === "string") {
+      into[props.value] = primaryLabel(props.children)
+      return
+    }
+    if (props.children) collectItemLabels(props.children, into)
+  })
+  return into
+}
+
+/**
+ * An item may carry a secondary hint element alongside its label. Only the text
+ * belongs in the trigger, so plain-text children win when there are any.
+ */
+function primaryLabel(children: React.ReactNode): React.ReactNode {
+  const text: string[] = []
+  React.Children.forEach(children, (child) => {
+    if (typeof child === "string" || typeof child === "number") {
+      text.push(String(child))
+    }
+  })
+  return text.length > 0 ? text.join("").trim() : children
 }
 
 /* ───────── Root ───────── */
@@ -58,6 +95,11 @@ function Select({ value: controlledValue, defaultValue, onValueChange, children 
     [isControlled, onValueChange]
   )
 
+  const labels = React.useMemo(
+    () => collectItemLabels(children, {}),
+    [children]
+  )
+
   const ctx = React.useMemo<SelectContextValue>(
     () => ({
       open,
@@ -69,8 +111,9 @@ function Select({ value: controlledValue, defaultValue, onValueChange, children 
       triggerRef,
       listRef,
       labelId,
+      labels,
     }),
-    [open, value, handleValueChange, activeDescendant, labelId]
+    [open, value, handleValueChange, activeDescendant, labelId, labels]
   )
 
   return (
@@ -94,13 +137,33 @@ function SelectGroup({ className, ...props }: React.ComponentPropsWithoutRef<"di
 
 /* ───────── Value ───────── */
 
-function SelectValue({ className, ...props }: React.ComponentPropsWithoutRef<"span">) {
+interface SelectValueProps
+  extends Omit<React.ComponentPropsWithoutRef<"span">, "children"> {
+  /** Shown when nothing is selected yet. */
+  placeholder?: string
+  children?: React.ReactNode
+}
+
+function SelectValue({
+  className,
+  placeholder,
+  children,
+  ...props
+}: SelectValueProps) {
+  const ctx = useSelectContext("SelectValue")
+  const selected =
+    ctx.value !== undefined && ctx.value !== ""
+      ? (ctx.labels[ctx.value] ?? ctx.value)
+      : undefined
+
   return (
     <span
       data-slot="select-value"
       className={cn("flex flex-1 text-left", className)}
       {...props}
-    />
+    >
+      {children ?? selected ?? placeholder}
+    </span>
   )
 }
 
@@ -117,21 +180,18 @@ function SelectTrigger({
   ...props
 }: SelectTriggerProps) {
   const ctx = useSelectContext("SelectTrigger")
-  const selectedChild = React.Children.toArray(children).find(
-    (child) =>
-      React.isValidElement(child) &&
-      (child as React.ReactElement).type === SelectValue
-  )
+  const hasValue = ctx.value !== undefined && ctx.value !== ""
 
   return (
     <button
       type="button"
       role="combobox"
+      data-placeholder={hasValue ? undefined : ""}
       aria-expanded={ctx.open}
       aria-haspopup="listbox"
       aria-controls={ctx.labelId}
       aria-activedescendant={ctx.activeDescendant}
-      ref={ctx.triggerRef}
+      ref={ctx.triggerRef as React.RefObject<HTMLButtonElement>}
       data-slot="select-trigger"
       data-size={size}
       onClick={() => ctx.setOpen(!ctx.open)}

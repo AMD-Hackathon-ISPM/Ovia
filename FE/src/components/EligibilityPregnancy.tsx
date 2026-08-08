@@ -47,7 +47,8 @@ export default function EligibilityPregnancy() {
           className="text-sm text-left mb-4"
           style={{ color: TEXT_COLOR, opacity: 0.58 }}
         >
-          Pelvis findings are interpreted during pregnancy
+          Ovarian findings are interpreted differently during pregnancy, so this
+          tool is not designed for use then.
         </p>
 
         <Button
@@ -58,10 +59,13 @@ export default function EligibilityPregnancy() {
         >
           Yes
         </Button>
+        {/* Locked (frontend-architecture.md §4.3): neither answer is
+            pre-selected or visually favoured. Yes and No are identical. */}
         <Button
           onClick={() => handleAnswer(false)}
-          className="w-full h-12 text-base rounded-xl font-bold text-white border-none"
-          style={{ backgroundColor: BRAND_COLOR }}
+          className="w-full h-12 text-base rounded-xl font-bold bg-white"
+          variant="outline"
+          style={{ borderColor: TEXT_COLOR, color: TEXT_COLOR }}
         >
           No
         </Button>

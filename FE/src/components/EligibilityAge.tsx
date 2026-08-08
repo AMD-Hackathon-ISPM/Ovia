@@ -80,7 +80,7 @@ export default function EligibilityAge() {
         <p className="text-sm text-muted-foreground text-left" 
            style={{  opacity: 0.58 }}
         >
-          This screening tool is validated for ages 18 and above
+          This screening tool is designed for ages 18 and above
         </p>
 
         <Button

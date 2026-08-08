@@ -58,10 +58,13 @@ export default function EligibilityOvary() {
         >
           Yes
         </Button>
+        {/* Locked (frontend-architecture.md §4.3): neither answer is
+            pre-selected or visually favoured. Yes and No are identical. */}
         <Button
           onClick={() => handleAnswer(false)}
-          className="w-full h-12 text-base rounded-xl font-bold text-white border-none"
-          style={{ backgroundColor: BRAND_COLOR }}
+          className="w-full h-12 text-base rounded-xl font-bold bg-white"
+          variant="outline"
+          style={{ borderColor: TEXT_COLOR, color: TEXT_COLOR }}
         >
           No
         </Button>

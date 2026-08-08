@@ -3,6 +3,8 @@ import { useFormContext } from "../context/FormContext";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
 import { Label } from "./ui/label";
+import { useSubmission } from "@/context/SubmissionContext";
+import SubmissionErrorNotice from "./SubmissionErrorNotice";
 
 const BRAND = "#D6697C";
 const BRAND_LIGHT = "#FADADD";
@@ -23,8 +25,10 @@ const MENOPAUSAL_LABEL: Record<string, string> = {
 };
 
 export default function ReviewConsent() {
-  const { state, dispatch, goToStep, goToNextStep } = useFormContext();
+  const { state, dispatch, goToStep } = useFormContext();
+  const { state: submission, submit } = useSubmission();
   const { data } = state;
+  const inFlight = submission.status === "submitting";
   const { clinical } = data;
 
   const heightM = parseFloat(clinical.heightCm) / 100;
@@ -38,6 +42,8 @@ export default function ReviewConsent() {
 
   return (
     <div className="w-full space-y-5">
+      <SubmissionErrorNotice forClass="retryable_error" />
+
       <div>
         <h2 className="text-2xl font-bold" style={{ color: TEXT_COLOR }}>
           Review
@@ -251,13 +257,16 @@ export default function ReviewConsent() {
         >
           Back
         </Button>
+        {/* Duplicate guard is enforced in SubmissionContext as well as here,
+            so a double press can never send two requests. */}
         <Button
-          onClick={() => goToNextStep()}
-          disabled={!data.consentGiven}
+          onClick={submit}
+          disabled={!data.consentGiven || inFlight}
           className="flex-1 h-12 text-base rounded-xl font-bold text-white border-none"
           style={{
-            backgroundColor: data.consentGiven ? BRAND : DISABLED_COLOR,
-            opacity: data.consentGiven ? 1 : 0.37,
+            backgroundColor:
+              data.consentGiven && !inFlight ? BRAND : DISABLED_COLOR,
+            opacity: data.consentGiven && !inFlight ? 1 : 0.37,
           }}
         >
           Submit
