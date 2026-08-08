@@ -74,8 +74,11 @@ export default function ProgressIndicator() {
               </span>
             </div>
             {i < MAIN_STEPS.length - 1 && (
+              /* The sibling column is icon (40px) + gap (6px) + label, so
+                 items-center would sink the rule below the icons. Pin it to the
+                 icon's own centre line: 20px - 1px for the rule's height. */
               <div
-                className="w-8 h-0.5 mx-1 transition-colors duration-300"
+                className="w-8 h-0.5 mx-1 self-start mt-4.75 transition-colors duration-300"
                 style={{
                   backgroundColor: isDone ? "#D6697C" : "#E9E9E9",
                 }}

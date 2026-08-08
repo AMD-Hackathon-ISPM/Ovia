@@ -67,7 +67,12 @@ function StepRouter() {
         </>
       );
     case "results":
-      return <Results />;
+      return (
+        <>
+          <ProgressIndicator />
+          <Results />
+        </>
+      );
     case "error":
       return <TerminalError />;
     default:
