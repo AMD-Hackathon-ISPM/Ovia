@@ -1,4 +1,4 @@
-import { createContext, useContext, useReducer, useEffect, type ReactNode } from "react";
+import { createContext, useContext, useReducer, type ReactNode } from "react";
 
 // ── Step definitions ──────────────────────────────────────────────
 export type Step =
@@ -18,14 +18,21 @@ export type Step =
 export interface ClinicalData {
   heightCm: string;
   weightKg: string;
-  pregnancies: string;
-  births: string;
-  menopausalStatus: string;
-  ageMenarche: string;
   cycleRegularity: string;
-  hormonalUse: string;
-  familyHistory: boolean;
-  symptoms: string[];
+  cycleLengthDays: string;
+  systolicBp: string;
+  diastolicBp: string;
+  fshMiuMl: string;
+  lhMiuMl: string;
+  tshMiuL: string;
+  amhNgMl: string;
+  weightGain: boolean;
+  hairGrowth: boolean;
+  skinDarkening: boolean;
+  hairLoss: boolean;
+  pimples: boolean;
+  fastFood: boolean;
+  regularExercise: boolean;
 }
 
 export interface FormData {
@@ -40,14 +47,21 @@ export interface FormData {
 const defaultClinical: ClinicalData = {
   heightCm: "",
   weightKg: "",
-  pregnancies: "",
-  births: "",
-  menopausalStatus: "",
-  ageMenarche: "",
   cycleRegularity: "",
-  hormonalUse: "",
-  familyHistory: false,
-  symptoms: [],
+  cycleLengthDays: "",
+  systolicBp: "",
+  diastolicBp: "",
+  fshMiuMl: "",
+  lhMiuMl: "",
+  tshMiuL: "",
+  amhNgMl: "",
+  weightGain: false,
+  hairGrowth: false,
+  skinDarkening: false,
+  hairLoss: false,
+  pimples: false,
+  fastFood: false,
+  regularExercise: false,
 };
 
 const defaultFormData: FormData = {
@@ -72,7 +86,6 @@ type Action =
   | { type: "SET_IS_PREGNANT"; value: boolean }
   | { type: "SET_AGE"; value: string }
   | { type: "SET_CLINICAL"; value: Partial<ClinicalData> }
-  | { type: "SET_SYMPTOMS"; value: string[] }
   | { type: "SET_ULTRASOUND_IMAGE"; value: string | null }
   | { type: "SET_CONSENT"; value: boolean }
   | { type: "RESET" };
@@ -93,14 +106,6 @@ function reducer(state: FormState, action: Action): FormState {
         data: {
           ...state.data,
           clinical: { ...state.data.clinical, ...action.value },
-        },
-      };
-    case "SET_SYMPTOMS":
-      return {
-        ...state,
-        data: {
-          ...state.data,
-          clinical: { ...state.data.clinical, symptoms: action.value },
         },
       };
     case "SET_ULTRASOUND_IMAGE":
@@ -126,38 +131,12 @@ interface FormContextType {
 
 const FormContext = createContext<FormContextType | null>(null);
 
-const STORAGE_KEY = "ovia-form-state";
-
-function loadFromStorage(): FormState | null {
-  try {
-    const raw = sessionStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch {
-    /* ignore */
-  }
-  return null;
-}
-
-function saveToStorage(state: FormState) {
-  try {
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  } catch {
-    /* ignore quota errors */
-  }
-}
-
 // ── Provider ──────────────────────────────────────────────────────
 export function FormProvider({ children }: { children: ReactNode }) {
-  const saved = loadFromStorage();
   const [state, dispatch] = useReducer(
     reducer,
-    saved ?? { step: "splash", data: { ...defaultFormData } }
+    { step: "splash", data: { ...defaultFormData } }
   );
-
-  // Persist to session storage on every change
-  useEffect(() => {
-    saveToStorage(state);
-  }, [state]);
 
   const visibleSteps: Step[] = [
     "splash",

@@ -18,7 +18,7 @@ import {
   decodeSuccess,
 } from "./wire";
 
-const SUBMIT_PATH = "/v1/screenings";
+const SUBMIT_PATH = "/api/v1/analyze";
 
 /**
  * Combines the caller's cancel signal with a per-attempt timeout.
@@ -124,6 +124,8 @@ export function createHttpAdapter(config: HttpAdapterConfig): OviaAdapter {
           contractVersion: decoded.contractVersion,
           panels: decoded.panels,
           ...(decoded.inspection ? { inspection: decoded.inspection } : {}),
+          ...(decoded.evidence ? { evidence: decoded.evidence } : {}),
+          ...(decoded.orchestration ? { orchestration: decoded.orchestration } : {}),
         };
       } catch (cause) {
         // Participant cancelled. Rethrown so the caller returns to idle rather

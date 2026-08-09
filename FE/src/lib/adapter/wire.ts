@@ -15,6 +15,11 @@ import type {
   ConditionId,
   ConditionResult,
   InspectionRegion,
+  ImageModelEvidence,
+  ClinicalEvidence,
+  SegmentationEvidence,
+  OviaEvidence,
+  OrchestrationResult,
   OviaError,
   PanelState,
   ResultPanels,
@@ -137,6 +142,8 @@ export interface DecodedSuccess {
   contractVersion: string;
   panels: ResultPanels;
   inspection?: InspectionRegion[];
+  evidence?: OviaEvidence;
+  orchestration?: OrchestrationResult;
 }
 
 export function decodeSuccess(body: unknown, fallbackRequestId: string): DecodedSuccess {
@@ -157,12 +164,16 @@ export function decodeSuccess(body: unknown, fallbackRequestId: string): Decoded
   };
 
   const inspection = decodeInspection(body.inspection);
+  const evidence = body.evidence === undefined ? undefined : decodeEvidence(body.evidence);
+  const orchestration = body.orchestration === undefined ? undefined : decodeOrchestration(body.orchestration);
 
   return {
     requestId: readString(body, "request_id") ?? fallbackRequestId,
     contractVersion,
     panels,
     ...(inspection.length > 0 ? { inspection } : {}),
+    ...(evidence ? { evidence } : {}),
+    ...(orchestration ? { orchestration } : {}),
   };
 }
 
@@ -301,6 +312,21 @@ function decodeInspection(raw: unknown): InspectionRegion[] {
 function clampFraction(value: number): number {
   return Math.min(1, Math.max(0, value));
 }
+
+const MODEL_STATUSES=["success","unavailable","invalid_input","inference_error"] as const;
+function requiredRecord(parent:Record<string,unknown>,key:string):Record<string,unknown>{const value=parent[key];if(!isRecord(value))throw new ContractViolation(`${key} missing`);return value}
+function requiredString(parent:Record<string,unknown>,key:string):string{const value=readString(parent,key);if(!value)throw new ContractViolation(`${key} missing`);return value}
+function requiredNumber(parent:Record<string,unknown>,key:string):number{const value=readFiniteNumber(parent,key);if(value===null)throw new ContractViolation(`${key} missing`);return value}
+function nullableNumber(parent:Record<string,unknown>,key:string):number|null{if(parent[key]===null)return null;return requiredNumber(parent,key)}
+function nullableBoolean(parent:Record<string,unknown>,key:string):boolean|null{const value=parent[key];if(value===null)return null;if(typeof value!=="boolean")throw new ContractViolation(`${key} must be boolean or null`);return value}
+function strings(value:unknown):string[]{if(!Array.isArray(value)||!value.every(v=>typeof v==="string"))throw new ContractViolation("expected a string array");return value}
+function modelStatus(value:Record<string,unknown>){const status=readMember(value,"status",MODEL_STATUSES);if(!status)throw new ContractViolation("unknown model status");return status}
+function probabilities(value:unknown):Record<string,number>{if(!isRecord(value))throw new ContractViolation("class_probabilities missing");const out:Record<string,number>={};for(const [key,item] of Object.entries(value)){if(typeof item!=="number"||!Number.isFinite(item))throw new ContractViolation("invalid class probability");out[key]=item}return out}
+function imageEvidence(value:unknown):ImageModelEvidence{if(!isRecord(value))throw new ContractViolation("image evidence missing");return{modelId:requiredString(value,"model_id"),modelVersion:requiredString(value,"model_version"),task:requiredString(value,"task"),status:modelStatus(value),probability:nullableNumber(value,"probability"),decisionThreshold:nullableNumber(value,"decision_threshold"),thresholdMet:nullableBoolean(value,"threshold_met"),predictedLabel:value.predicted_label===null?null:requiredString(value,"predicted_label"),classProbabilities:probabilities(value.class_probabilities),warnings:strings(value.warnings)}}
+function clinicalEvidence(value:unknown):ClinicalEvidence{if(!isRecord(value))throw new ContractViolation("clinical evidence missing");return{modelId:requiredString(value,"model_id"),modelVersion:requiredString(value,"model_version"),status:modelStatus(value),suppliedFeatureCount:requiredNumber(value,"supplied_feature_count"),rawProbability:nullableNumber(value,"raw_probability"),calibratedProbability:nullableNumber(value,"calibrated_probability"),screeningThreshold:requiredNumber(value,"screening_threshold"),screeningThresholdMet:nullableBoolean(value,"screening_threshold_met"),warnings:strings(value.warnings)}}
+function segmentationEvidence(value:unknown):SegmentationEvidence{if(!isRecord(value))throw new ContractViolation("segmentation evidence missing");return{modelId:requiredString(value,"model_id"),modelVersion:requiredString(value,"model_version"),status:modelStatus(value),segmentationAvailable:value.segmentation_available===true,maskWidth:nullableNumber(value,"mask_width"),maskHeight:nullableNumber(value,"mask_height"),foregroundFraction:nullableNumber(value,"foreground_fraction"),connectedComponentCount:nullableNumber(value,"connected_component_count"),maskPngDataUrl:value.mask_png_data_url===null?null:requiredString(value,"mask_png_data_url"),threshold:requiredNumber(value,"threshold"),warnings:strings(value.warnings)}}
+function decodeEvidence(value:unknown):OviaEvidence{if(!isRecord(value))throw new ContractViolation("evidence missing");const images=requiredRecord(value,"image_models");return{imageModels:{biomedclip:imageEvidence(images.biomedclip),convnextTiny:imageEvidence(images.convnext_tiny)},clinicalModel:clinicalEvidence(value.clinical_model),segmentation:segmentationEvidence(value.segmentation),warnings:strings(value.warnings)}}
+function decodeOrchestration(value:unknown):OrchestrationResult{if(!isRecord(value))throw new ContractViolation("orchestration missing");const agreement=requiredRecord(value,"agreement");const status=readMember(value,"status",["success","unavailable","invalid_response"]as const);const agreementStatus=readMember(agreement,"status",["concordant","mixed","insufficient"]as const);if(!status||!agreementStatus)throw new ContractViolation("invalid orchestration status");const narrative=value.evidence;if(!Array.isArray(narrative))throw new ContractViolation("orchestration evidence missing");return{status,provider:requiredString(value,"provider"),model:value.model===null?null:requiredString(value,"model"),summary:value.summary===null?null:requiredString(value,"summary"),evidence:narrative.map(item=>{if(!isRecord(item))throw new ContractViolation("invalid narrative evidence");return{source:requiredString(item,"source"),finding:requiredString(item,"finding"),importance:requiredString(item,"importance")}}),agreement:{status:agreementStatus,explanation:requiredString(agreement,"explanation")},limitations:strings(value.limitations),recommendedNextStep:requiredString(value,"recommended_next_step"),disclaimer:requiredString(value,"disclaimer"),warnings:strings(value.warnings)}}
 
 // ── Error response ────────────────────────────────────────────────
 
