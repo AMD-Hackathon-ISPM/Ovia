@@ -1,0 +1,208 @@
+name: ovia
+
+x-service-defaults: &service-defaults
+  restart: unless-stopped
+  read_only: true
+  init: true
+  security_opt:
+    - no-new-privileges:true
+  pids_limit: 256
+  tmpfs:
+    - /tmp:size=128m,mode=1777
+
+x-worker-defaults: &worker-defaults
+  <<: *service-defaults
+  build:
+    context: ./BE
+    target: runtime-cpu
+  entrypoint: ["/usr/local/bin/model-worker"]
+  environment:
+    OVIA_HOST: 0.0.0.0
+    OVIA_MODELS_DIR: /app/models
+    ORT_EXECUTION_PROVIDER: cpu
+    LLM_PROVIDER: disabled
+    RUST_LOG: ovia_backend=info,tower_http=info
+  networks: [models]
+  volumes:
+    - ./BE/models/manifest.json:/app/models/manifest.json:ro
+    - ./BE/models/metadata:/app/models/metadata:ro
+
+services:
+  model-biomedclip:
+    <<: *worker-defaults
+    environment:
+      OVIA_HOST: 0.0.0.0
+      OVIA_PORT: 8091
+      OVIA_MODELS_DIR: /app/models
+      ORT_EXECUTION_PROVIDER: cpu
+      MODEL_WORKER_ID: biomedclip_pcos_morphology
+      LLM_PROVIDER: disabled
+      RUST_LOG: ovia_backend=info,tower_http=info
+    volumes:
+      - ./BE/models/manifest.json:/app/models/manifest.json:ro
+      - ./BE/models/metadata:/app/models/metadata:ro
+      - ./BE/models/biomedclip.onnx:/app/models/biomedclip.onnx:ro
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://127.0.0.1:8091/internal/health"]
+      interval: 20s
+      timeout: 5s
+      start_period: 120s
+      retries: 5
+    cpus: 2.0
+    mem_limit: 3g
+
+  model-convnext:
+    <<: *worker-defaults
+    environment:
+      OVIA_HOST: 0.0.0.0
+      OVIA_PORT: 8092
+      OVIA_MODELS_DIR: /app/models
+      ORT_EXECUTION_PROVIDER: cpu
+      MODEL_WORKER_ID: convnext_tiny_ovarian_appearance
+      LLM_PROVIDER: disabled
+      RUST_LOG: ovia_backend=info,tower_http=info
+    volumes:
+      - ./BE/models/manifest.json:/app/models/manifest.json:ro
+      - ./BE/models/metadata:/app/models/metadata:ro
+      - ./BE/models/convnext_tiny.onnx:/app/models/convnext_tiny.onnx:ro
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://127.0.0.1:8092/internal/health"]
+      interval: 20s
+      timeout: 5s
+      start_period: 90s
+      retries: 5
+    cpus: 1.5
+    mem_limit: 2g
+
+  model-xgboost:
+    <<: *worker-defaults
+    environment:
+      OVIA_HOST: 0.0.0.0
+      OVIA_PORT: 8093
+      OVIA_MODELS_DIR: /app/models
+      ORT_EXECUTION_PROVIDER: cpu
+      MODEL_WORKER_ID: xgboost_clinical_fusion
+      LLM_PROVIDER: disabled
+      RUST_LOG: ovia_backend=info,tower_http=info
+    volumes:
+      - ./BE/models/manifest.json:/app/models/manifest.json:ro
+      - ./BE/models/metadata:/app/models/metadata:ro
+      - ./BE/models/xgboost.onnx:/app/models/xgboost.onnx:ro
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://127.0.0.1:8093/internal/health"]
+      interval: 20s
+      timeout: 5s
+      start_period: 30s
+      retries: 5
+    cpus: 0.5
+    mem_limit: 512m
+
+  model-unetpp:
+    <<: *worker-defaults
+    environment:
+      OVIA_HOST: 0.0.0.0
+      OVIA_PORT: 8094
+      OVIA_MODELS_DIR: /app/models
+      ORT_EXECUTION_PROVIDER: cpu
+      MODEL_WORKER_ID: unetpp_ovarian_lesion_segmentation
+      LLM_PROVIDER: disabled
+      RUST_LOG: ovia_backend=info,tower_http=info
+    volumes:
+      - ./BE/models/manifest.json:/app/models/manifest.json:ro
+      - ./BE/models/metadata:/app/models/metadata:ro
+      - ./BE/models/unetpp_otu2d.onnx:/app/models/unetpp_otu2d.onnx:ro
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://127.0.0.1:8094/internal/health"]
+      interval: 20s
+      timeout: 5s
+      start_period: 150s
+      retries: 5
+    cpus: 2.5
+    mem_limit: 4g
+
+  api:
+    <<: *service-defaults
+    build:
+      context: ./BE
+      target: runtime-cpu
+    environment:
+      OVIA_HOST: 0.0.0.0
+      OVIA_PORT: 8080
+      OVIA_INFERENCE_MODE: remote
+      BIOMEDCLIP_WORKER_URL: http://model-biomedclip:8091
+      CONVNEXT_WORKER_URL: http://model-convnext:8092
+      XGBOOST_WORKER_URL: http://model-xgboost:8093
+      UNETPP_WORKER_URL: http://model-unetpp:8094
+      MODEL_WORKER_TIMEOUT_SECONDS: ${MODEL_WORKER_TIMEOUT_SECONDS:-45}
+      CORS_ALLOWED_ORIGINS: http://localhost,http://127.0.0.1
+      LLM_PROVIDER: ${LLM_PROVIDER:-disabled}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-30}
+      RUST_LOG: ovia_backend=info,tower_http=info
+    depends_on:
+      model-biomedclip: { condition: service_healthy }
+      model-convnext: { condition: service_healthy }
+      model-xgboost: { condition: service_healthy }
+      model-unetpp: { condition: service_healthy }
+    networks: [edge, models]
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://127.0.0.1:8080/api/v1/health"]
+      interval: 20s
+      timeout: 5s
+      start_period: 20s
+      retries: 5
+    cpus: 1.0
+    mem_limit: 768m
+
+  frontend:
+    <<: *service-defaults
+    build:
+      context: ./FE
+      args:
+        VITE_OVIA_ADAPTER: live
+        VITE_OVIA_API_BASE_URL: /
+        VITE_OVIA_REQUEST_TIMEOUT_MS: 60000
+    networks: [edge]
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+      - /var/cache/nginx:size=32m
+      - /var/run:size=1m
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/"]
+      interval: 20s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    cpus: 0.25
+    mem_limit: 128m
+
+  gateway:
+    <<: *service-defaults
+    image: nginx:1.27-alpine
+    depends_on:
+      api: { condition: service_healthy }
+      frontend: { condition: service_healthy }
+    ports:
+      - "${OVIA_HTTP_PORT:-80}:8080"
+    volumes:
+      - ./deploy/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+      - /var/cache/nginx:size=32m
+      - /var/run:size=1m
+    networks: [edge]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/api/v1/health"]
+      interval: 20s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    cpus: 0.25
+    mem_limit: 128m
+
+networks:
+  edge: {}
+  models:
+    internal: true

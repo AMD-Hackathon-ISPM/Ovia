@@ -195,9 +195,9 @@ mod tests {
             analysis_id: uuid::Uuid::new_v4(),
             image_models: ImageEvidence {
                 biomedclip: ImageModelEvidence {
-                    model_id: "biomedclip_pcos_morphology",
+                    model_id: "biomedclip_pcos_morphology".into(),
                     model_version: "test".into(),
-                    task: "morphology",
+                    task: "morphology".into(),
                     status: ModelStatus::Success,
                     duration_ms: None,
                     raw_logit: Some(0.0),
@@ -217,9 +217,9 @@ mod tests {
                 ),
             },
             clinical_model: ClinicalEvidence {
-                model_id: "xgboost_clinical_fusion",
+                model_id: "xgboost_clinical_fusion".into(),
                 model_version: "test".into(),
-                task: "clinical",
+                task: "clinical".into(),
                 status: ModelStatus::Unavailable,
                 duration_ms: None,
                 supplied_feature_count: 0,
@@ -230,7 +230,7 @@ mod tests {
                 warnings: vec![],
             },
             segmentation: SegmentationEvidence {
-                model_id: "unetpp_ovarian_lesion_segmentation",
+                model_id: "unetpp_ovarian_lesion_segmentation".into(),
                 model_version: "test".into(),
                 status: ModelStatus::Unavailable,
                 duration_ms: None,

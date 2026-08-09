@@ -20,6 +20,8 @@ use crate::{
     preprocessing::clinical::ClinicalPreprocessor,
 };
 
+pub mod remote;
+
 pub const BIOMED_ID: &str = "biomedclip_pcos_morphology";
 pub const CONVNEXT_ID: &str = "convnext_tiny_ovarian_appearance";
 pub const XGBOOST_ID: &str = "xgboost_clinical_fusion";
@@ -45,7 +47,7 @@ pub struct ModelEntry {
     pub output_contract: serde_json::Value,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct LoadedModelInfo {
     pub model_id: String,
     pub model_family: String,
@@ -74,12 +76,27 @@ pub struct ModelRegistry {
 
 impl ModelRegistry {
     pub async fn load(config: &Config) -> anyhow::Result<Self> {
+        Self::load_selected(config, None).await
+    }
+
+    pub async fn load_one(config: &Config, model_id: &str) -> anyhow::Result<Self> {
+        if ![BIOMED_ID, CONVNEXT_ID, XGBOOST_ID, UNET_ID].contains(&model_id) {
+            anyhow::bail!("unknown model worker id: {model_id}");
+        }
+        Self::load_selected(config, Some(model_id)).await
+    }
+
+    async fn load_selected(config: &Config, selected: Option<&str>) -> anyhow::Result<Self> {
         let manifest_path = config.models_dir.join("manifest.json");
         let manifest: ModelManifest = serde_json::from_slice(&fs::read(&manifest_path)?)?;
-        validate_manifest(&manifest, &config.models_dir)?;
+        validate_manifest(&manifest, &config.models_dir, selected)?;
 
         let mut sessions = BTreeMap::new();
-        for entry in &manifest.models {
+        for entry in manifest
+            .models
+            .iter()
+            .filter(|entry| selected.is_none_or(|id| entry.model_id == id))
+        {
             let path = safe_child(&config.models_dir, &entry.filename)?;
             let (session, provider) = create_session(
                 &path,
@@ -149,11 +166,19 @@ impl ModelRegistry {
     }
 
     fn warm(&self) -> Result<(), AppError> {
-        self.run_biomedclip(vec![0.0; 3 * 224 * 224])?;
-        self.run_convnext(vec![0.0; 3 * 224 * 224])?;
-        self.run_xgboost(vec![0.0; 68])?;
-        self.run_unet(vec![0.0; 3 * 512 * 512])?;
-        tracing::info!(models = 4, "model warmup completed");
+        if self.sessions.contains_key(BIOMED_ID) {
+            self.run_biomedclip(vec![0.0; 3 * 224 * 224])?;
+        }
+        if self.sessions.contains_key(CONVNEXT_ID) {
+            self.run_convnext(vec![0.0; 3 * 224 * 224])?;
+        }
+        if self.sessions.contains_key(XGBOOST_ID) {
+            self.run_xgboost(vec![0.0; 68])?;
+        }
+        if self.sessions.contains_key(UNET_ID) {
+            self.run_unet(vec![0.0; 3 * 512 * 512])?;
+        }
+        tracing::info!(models = self.sessions.len(), "model warmup completed");
         Ok(())
     }
 
@@ -224,7 +249,11 @@ impl ModelRegistry {
     }
 }
 
-fn validate_manifest(manifest: &ModelManifest, models_dir: &Path) -> anyhow::Result<()> {
+fn validate_manifest(
+    manifest: &ModelManifest,
+    models_dir: &Path,
+    selected: Option<&str>,
+) -> anyhow::Result<()> {
     if manifest.models.len() != 4 {
         anyhow::bail!("model manifest must contain exactly four models");
     }
@@ -233,7 +262,11 @@ fn validate_manifest(manifest: &ModelManifest, models_dir: &Path) -> anyhow::Res
             anyhow::bail!("manifest must contain model {id} exactly once");
         }
     }
-    for model in &manifest.models {
+    for model in manifest
+        .models
+        .iter()
+        .filter(|model| selected.is_none_or(|id| model.model_id == id))
+    {
         let path = safe_child(models_dir, &model.filename)?;
         let actual = sha256_file(&path)?;
         if !actual.eq_ignore_ascii_case(&model.sha256) {

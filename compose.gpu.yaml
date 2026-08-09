@@ -1,0 +1,42 @@
+services:
+  model-biomedclip:
+    build:
+      context: ./BE
+      target: runtime-gpu
+    environment:
+      ORT_EXECUTION_PROVIDER: cuda
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  model-convnext:
+    build:
+      context: ./BE
+      target: runtime-gpu
+    environment:
+      ORT_EXECUTION_PROVIDER: cuda
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  model-unetpp:
+    build:
+      context: ./BE
+      target: runtime-gpu
+    environment:
+      ORT_EXECUTION_PROVIDER: cuda
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

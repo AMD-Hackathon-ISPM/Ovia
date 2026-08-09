@@ -1,4 +1,4 @@
-mod analyze;
+pub mod analyze;
 
 use axum::{
     Router,
@@ -27,7 +27,12 @@ pub fn router(state: AppState) -> Router {
     let cors = CorsLayer::new()
         .allow_origin(origins)
         .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
-        .allow_headers([axum::http::header::CONTENT_TYPE, axum::http::header::ACCEPT, request_id.clone(), schema_version]);
+        .allow_headers([
+            axum::http::header::CONTENT_TYPE,
+            axum::http::header::ACCEPT,
+            request_id.clone(),
+            schema_version,
+        ]);
     Router::new()
         .route("/api/v1/health", get(analyze::health))
         .route("/api/v1/models", get(analyze::models))

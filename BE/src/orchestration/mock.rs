@@ -36,9 +36,9 @@ mod tests {
                 ),
             },
             clinical_model: ClinicalEvidence {
-                model_id: "xgboost_clinical_fusion",
+                model_id: "xgboost_clinical_fusion".into(),
                 model_version: "v".into(),
-                task: "task",
+                task: "task".into(),
                 status: ModelStatus::Unavailable,
                 duration_ms: None,
                 supplied_feature_count: 0,
@@ -49,7 +49,7 @@ mod tests {
                 warnings: vec![],
             },
             segmentation: SegmentationEvidence {
-                model_id: "unetpp_ovarian_lesion_segmentation",
+                model_id: "unetpp_ovarian_lesion_segmentation".into(),
                 model_version: "v".into(),
                 status: ModelStatus::Unavailable,
                 duration_ms: None,

@@ -11,7 +11,7 @@ pub enum ModelStatus {
     InferenceError,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct OviaEvidence {
     pub analysis_id: Uuid,
     pub image_models: ImageEvidence,
@@ -21,17 +21,17 @@ pub struct OviaEvidence {
     pub warnings: Vec<String>,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ImageEvidence {
     pub biomedclip: ImageModelEvidence,
     pub convnext_tiny: ImageModelEvidence,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ImageModelEvidence {
-    pub model_id: &'static str,
+    pub model_id: String,
     pub model_version: String,
-    pub task: &'static str,
+    pub task: String,
     pub status: ModelStatus,
     pub duration_ms: Option<f64>,
     pub raw_logit: Option<f32>,
@@ -43,11 +43,11 @@ pub struct ImageModelEvidence {
     pub warnings: Vec<String>,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ClinicalEvidence {
-    pub model_id: &'static str,
+    pub model_id: String,
     pub model_version: String,
-    pub task: &'static str,
+    pub task: String,
     pub status: ModelStatus,
     pub duration_ms: Option<f64>,
     pub supplied_feature_count: usize,
@@ -58,7 +58,7 @@ pub struct ClinicalEvidence {
     pub warnings: Vec<String>,
 }
 
-#[derive(Clone, Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct BoundingBox {
     pub x_min: u32,
     pub y_min: u32,
@@ -66,9 +66,9 @@ pub struct BoundingBox {
     pub y_max: u32,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct SegmentationEvidence {
-    pub model_id: &'static str,
+    pub model_id: String,
     pub model_version: String,
     pub status: ModelStatus,
     pub duration_ms: Option<f64>,
@@ -83,7 +83,7 @@ pub struct SegmentationEvidence {
     pub warnings: Vec<String>,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct QualityEvidence {
     pub image_supplied: bool,
     pub image_decoded: bool,
@@ -94,16 +94,16 @@ pub struct QualityEvidence {
 
 impl ImageModelEvidence {
     pub fn unavailable(
-        model_id: &'static str,
+        model_id: impl Into<String>,
         version: String,
-        task: &'static str,
+        task: impl Into<String>,
         status: ModelStatus,
         warning: String,
     ) -> Self {
         Self {
-            model_id,
+            model_id: model_id.into(),
             model_version: version,
-            task,
+            task: task.into(),
             status,
             duration_ms: None,
             raw_logit: None,

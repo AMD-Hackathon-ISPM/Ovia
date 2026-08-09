@@ -8,7 +8,7 @@ use serde::Serialize;
 use uuid::Uuid;
 
 use crate::{
-    AppState,
+    AppState, InferenceBackend,
     contracts::{
         request::SubmitPayload,
         response::{AnalyzeResponse, ConditionResult, InspectionRegion, Panel, Panels},
@@ -55,7 +55,7 @@ pub struct HealthResponse {
 }
 
 pub async fn health(State(state): State<AppState>) -> Json<HealthResponse> {
-    let infos = state.models.model_infos();
+    let infos = state.inference.model_infos();
     let mut providers = infos
         .iter()
         .map(|model| model.execution_provider.clone())
@@ -66,7 +66,7 @@ pub async fn health(State(state): State<AppState>) -> Json<HealthResponse> {
         status: "ok",
         service: "ovia-backend",
         contract_version: "ovia-v1",
-        manifest_version: state.models.manifest_version().into(),
+        manifest_version: state.inference.manifest_version().into(),
         models_ready: infos.len(),
         onnxruntime_api: format!("1.{}.x (ort 2.0.0-rc.13)", ort::MINOR_VERSION),
         execution_providers: providers,
@@ -88,8 +88,8 @@ pub struct LlmInfo {
 }
 pub async fn models(State(state): State<AppState>) -> Json<ModelsResponse> {
     Json(ModelsResponse {
-        manifest_version: state.models.manifest_version().into(),
-        models: state.models.model_infos(),
+        manifest_version: state.inference.manifest_version().into(),
+        models: state.inference.model_infos(),
         llm: LlmInfo {
             configured: state.llm.configured(),
             provider: state.llm.provider_name(),
@@ -165,12 +165,24 @@ pub async fn analyze(
         None => None,
     };
 
-    let biomed_task = spawn_image_biomed(state.models.clone(), decoded.clone());
-    let convnext_task = spawn_image_convnext(state.models.clone(), decoded.clone());
-    let unet_task = spawn_image_unet(state.models.clone(), decoded.clone());
-    let clinical_task = spawn_clinical(state.models.clone(), payload.answers.clone(), supplied);
-    let (biomed, convnext, segmentation, clinical) =
-        tokio::join!(biomed_task, convnext_task, unet_task, clinical_task);
+    let (biomed, convnext, segmentation, clinical) = match &state.inference {
+        InferenceBackend::Local(models) => {
+            tokio::join!(
+                spawn_image_biomed(models.clone(), decoded.clone()),
+                spawn_image_convnext(models.clone(), decoded.clone()),
+                spawn_image_unet(models.clone(), decoded.clone()),
+                spawn_clinical(models.clone(), payload.answers.clone(), supplied)
+            )
+        }
+        InferenceBackend::Remote(workers) => {
+            tokio::join!(
+                remote_biomed(workers.clone(), image_bytes.clone()),
+                remote_convnext(workers.clone(), image_bytes.clone()),
+                remote_unet(workers.clone(), image_bytes.clone()),
+                remote_clinical(workers.clone(), payload.answers.clone(), supplied)
+            )
+        }
+    };
     let mut evidence = OviaEvidence {
         analysis_id,
         image_models: ImageEvidence {
@@ -212,7 +224,7 @@ pub async fn analyze(
 }
 
 #[derive(Clone, Copy)]
-enum ImageKind {
+pub enum ImageKind {
     Biomed,
     ConvNext,
     Unet,
@@ -303,9 +315,9 @@ fn run_image(
             Ok(logit) => {
                 let probability = sigmoid(logit);
                 ImageTaskOutput::Biomed(ImageModelEvidence {
-                    model_id: BIOMED_ID,
+                    model_id: BIOMED_ID.into(),
                     model_version: version,
-                    task: "ultrasound morphology screening",
+                    task: "ultrasound morphology screening".into(),
                     status: ModelStatus::Success,
                     duration_ms: Some(elapsed(started)),
                     raw_logit: Some(logit),
@@ -347,9 +359,9 @@ fn run_image(
                     .map(|x| x.0)
                     .unwrap_or(0);
                 ImageTaskOutput::ConvNext(ImageModelEvidence {
-                    model_id: CONVNEXT_ID,
+                    model_id: CONVNEXT_ID.into(),
                     model_version: version,
-                    task: "ovarian ultrasound appearance classification",
+                    task: "ovarian ultrasound appearance classification".into(),
                     status: ModelStatus::Success,
                     duration_ms: Some(elapsed(started)),
                     raw_logit: None,
@@ -374,18 +386,36 @@ fn run_image(
         ImageKind::Unet => {
             let (tensor, meta) = unet_tensor(image);
             match models.run_unet(tensor).and_then(|logits|reconstruct(&logits,meta,UNET_THRESHOLD)){
-                Ok(mask)=>ImageTaskOutput::Unet(SegmentationEvidence{model_id:UNET_ID,model_version:version,status:ModelStatus::Success,duration_ms:Some(elapsed(started)),segmentation_available:true,mask_width:Some(mask.mask.width()),mask_height:Some(mask.mask.height()),foreground_fraction:Some(mask.foreground_fraction),bounding_box:mask.bounding_box,connected_component_count:Some(mask.connected_components),mask_png_data_url:Some(mask.png_data_url),threshold:UNET_THRESHOLD,warnings:vec!["The highlighted region is a model segmentation, not a pathology or malignancy finding.".into()]}),
+                Ok(mask)=>ImageTaskOutput::Unet(SegmentationEvidence{model_id:UNET_ID.into(),model_version:version,status:ModelStatus::Success,duration_ms:Some(elapsed(started)),segmentation_available:true,mask_width:Some(mask.mask.width()),mask_height:Some(mask.mask.height()),foreground_fraction:Some(mask.foreground_fraction),bounding_box:mask.bounding_box,connected_component_count:Some(mask.connected_components),mask_png_data_url:Some(mask.png_data_url),threshold:UNET_THRESHOLD,warnings:vec!["The highlighted region is a model segmentation, not a pathology or malignancy finding.".into()]}),
                 Err(_)=>ImageTaskOutput::Unet(empty_segmentation(version,ModelStatus::InferenceError,"U-Net++ inference was unavailable.")),
             }
         }
     }
 }
 
-async fn spawn_clinical(
-    models: Arc<ModelRegistry>,
-    input: crate::contracts::request::ClinicalInput,
-    supplied: usize,
+pub fn worker_image_evidence(
+    models: &ModelRegistry,
+    image: &DecodedImage,
+    kind: ImageKind,
+) -> Result<serde_json::Value, AppError> {
+    let id = match kind {
+        ImageKind::Biomed => BIOMED_ID,
+        ImageKind::ConvNext => CONVNEXT_ID,
+        ImageKind::Unet => UNET_ID,
+    };
+    let value = match run_image(models, image, kind, models.model_version(id)) {
+        ImageTaskOutput::Biomed(value) => serde_json::to_value(value),
+        ImageTaskOutput::ConvNext(value) => serde_json::to_value(value),
+        ImageTaskOutput::Unet(value) => serde_json::to_value(value),
+    };
+    value.map_err(|error| AppError::inference(format!("worker response failed: {error}")))
+}
+
+pub fn worker_clinical_evidence(
+    models: &ModelRegistry,
+    input: &crate::contracts::request::ClinicalInput,
 ) -> ClinicalEvidence {
+    let supplied = input.supplied_count();
     let version = models.model_version(XGBOOST_ID);
     if supplied == 0 {
         return empty_clinical(
@@ -395,24 +425,22 @@ async fn spawn_clinical(
             "No supported clinical fields were supplied.",
         );
     }
-    match tokio::task::spawn_blocking(move || {
-        let started = Instant::now();
-        let features = models.clinical_preprocessor.transform(&input)?;
-        let raw = models.run_xgboost(features)?;
-        Ok::<_, AppError>((raw, elapsed(started)))
-    })
-    .await
-    {
-        Ok(Ok((raw, duration))) => {
+    let started = Instant::now();
+    let result = models
+        .clinical_preprocessor
+        .transform(input)
+        .and_then(|features| models.run_xgboost(features));
+    match result {
+        Ok(raw) => {
             let p = raw.clamp(0.000_000_1, 0.999_999_9);
             let calibrated =
                 sigmoid(XGBOOST_PLATT_COEFFICIENT * (p / (1.0 - p)).ln() + XGBOOST_PLATT_INTERCEPT);
             ClinicalEvidence {
-                model_id: XGBOOST_ID,
+                model_id: XGBOOST_ID.into(),
                 model_version: version,
-                task: "structured clinical PCOS screening",
+                task: "structured clinical PCOS screening".into(),
                 status: ModelStatus::Success,
-                duration_ms: Some(duration),
+                duration_ms: Some(elapsed(started)),
                 supplied_feature_count: supplied,
                 raw_probability: Some(raw),
                 calibrated_probability: Some(calibrated),
@@ -421,13 +449,125 @@ async fn spawn_clinical(
                 warnings: vec!["This research screening signal is not a PCOS diagnosis.".into()],
             }
         }
-        _ => empty_clinical(
+        Err(_) => empty_clinical(
             version,
             ModelStatus::InferenceError,
             supplied,
             "XGBoost inference was unavailable.",
         ),
     }
+}
+
+async fn spawn_clinical(
+    models: Arc<ModelRegistry>,
+    input: crate::contracts::request::ClinicalInput,
+    supplied: usize,
+) -> ClinicalEvidence {
+    let fallback_version = models.model_version(XGBOOST_ID);
+    match tokio::task::spawn_blocking(move || worker_clinical_evidence(&models, &input)).await {
+        Ok(value) => value,
+        Err(_) => empty_clinical(
+            fallback_version,
+            ModelStatus::InferenceError,
+            supplied,
+            "XGBoost inference was unavailable.",
+        ),
+    }
+}
+
+async fn remote_biomed(
+    workers: Arc<crate::inference::remote::RemoteInference>,
+    image: Option<Vec<u8>>,
+) -> ImageModelEvidence {
+    let version = workers.model_version(BIOMED_ID);
+    let Some(image) = image else {
+        return ImageModelEvidence::unavailable(
+            BIOMED_ID,
+            version,
+            "ultrasound morphology screening",
+            ModelStatus::Unavailable,
+            "No ultrasound image was supplied.".into(),
+        );
+    };
+    workers.biomedclip(image).await.unwrap_or_else(|_| {
+        ImageModelEvidence::unavailable(
+            BIOMED_ID,
+            version,
+            "ultrasound morphology screening",
+            ModelStatus::InferenceError,
+            "BiomedCLIP worker was unavailable or timed out.".into(),
+        )
+    })
+}
+
+async fn remote_convnext(
+    workers: Arc<crate::inference::remote::RemoteInference>,
+    image: Option<Vec<u8>>,
+) -> ImageModelEvidence {
+    let version = workers.model_version(CONVNEXT_ID);
+    let Some(image) = image else {
+        return ImageModelEvidence::unavailable(
+            CONVNEXT_ID,
+            version,
+            "ovarian ultrasound appearance classification",
+            ModelStatus::Unavailable,
+            "No ultrasound image was supplied.".into(),
+        );
+    };
+    workers.convnext(image).await.unwrap_or_else(|_| {
+        ImageModelEvidence::unavailable(
+            CONVNEXT_ID,
+            version,
+            "ovarian ultrasound appearance classification",
+            ModelStatus::InferenceError,
+            "ConvNeXt worker was unavailable or timed out.".into(),
+        )
+    })
+}
+
+async fn remote_unet(
+    workers: Arc<crate::inference::remote::RemoteInference>,
+    image: Option<Vec<u8>>,
+) -> SegmentationEvidence {
+    let version = workers.model_version(UNET_ID);
+    let Some(image) = image else {
+        return empty_segmentation(
+            version,
+            ModelStatus::Unavailable,
+            "No ultrasound image was supplied.",
+        );
+    };
+    workers.unet(image).await.unwrap_or_else(|_| {
+        empty_segmentation(
+            version,
+            ModelStatus::InferenceError,
+            "U-Net++ worker was unavailable or timed out.",
+        )
+    })
+}
+
+async fn remote_clinical(
+    workers: Arc<crate::inference::remote::RemoteInference>,
+    input: crate::contracts::request::ClinicalInput,
+    supplied: usize,
+) -> ClinicalEvidence {
+    let version = workers.model_version(XGBOOST_ID);
+    if supplied == 0 {
+        return empty_clinical(
+            version,
+            ModelStatus::Unavailable,
+            supplied,
+            "No supported clinical fields were supplied.",
+        );
+    }
+    workers.xgboost(input).await.unwrap_or_else(|_| {
+        empty_clinical(
+            version,
+            ModelStatus::InferenceError,
+            supplied,
+            "XGBoost worker was unavailable or timed out.",
+        )
+    })
 }
 
 trait IntoOutput {
@@ -491,9 +631,9 @@ fn empty_clinical(
     warning: &str,
 ) -> ClinicalEvidence {
     ClinicalEvidence {
-        model_id: XGBOOST_ID,
+        model_id: XGBOOST_ID.into(),
         model_version: version,
-        task: "structured clinical PCOS screening",
+        task: "structured clinical PCOS screening".into(),
         status,
         duration_ms: None,
         supplied_feature_count: supplied,
@@ -506,7 +646,7 @@ fn empty_clinical(
 }
 fn empty_segmentation(version: String, status: ModelStatus, warning: &str) -> SegmentationEvidence {
     SegmentationEvidence {
-        model_id: UNET_ID,
+        model_id: UNET_ID.into(),
         model_version: version,
         status,
         duration_ms: None,

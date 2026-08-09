@@ -16,3 +16,10 @@ Start with [`AGENT.md`](AGENT.md) — it routes to every canonical document and 
 | Whether a fact is usable | [`.agent/evidence-register.md`](.agent/evidence-register.md) |
 
 **No accuracy, sensitivity, specificity, or AUROC figure appears in this repository until it traces to a recorded reproducible run.**
+## Run the complete container stack
+
+```powershell
+docker compose up -d --build
+```
+
+Open `http://localhost`. The stack includes an Nginx gateway, production React frontend, Rust API, and one isolated container per model. See [container deployment](docs/deployment.md) for CPU/GPU commands, failure behavior, security boundaries, and configuration.

@@ -35,6 +35,7 @@ fn config() -> Config {
         max_image_bytes: 2_000_000,
         max_image_pixels: 2_000_000,
         llm: None,
+        inference: ovia_backend::config::InferenceConfig::Local,
     }
 }
 
@@ -60,7 +61,7 @@ async fn representative_image_and_clinical_request_runs_all_onnx_and_mock_llm() 
     };
     let state = AppState {
         config: Arc::new(config),
-        models,
+        inference: ovia_backend::InferenceBackend::Local(models),
         llm: Arc::new(MockLlm::new(vec![Ok(draft)])),
     };
     let health = router(state.clone())

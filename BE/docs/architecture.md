@@ -21,6 +21,21 @@ flowchart LR
 
 Rust is authoritative. No image is sent to the LLM. Numeric evidence is serialized from ONNX/postprocessing fields, never from generated prose.
 
+## Production container topology
+
+```mermaid
+flowchart LR
+  Browser --> Gateway[Nginx gateway]
+  Gateway --> Frontend[Static React container]
+  Gateway --> API[Stateless Axum API]
+  API -->|independent timed HTTP call| B[BiomedCLIP worker]
+  API -->|independent timed HTTP call| C[ConvNeXt worker]
+  API -->|independent timed HTTP call| X[XGBoost worker]
+  API -->|independent timed HTTP call| U[U-Net++ worker]
+```
+
+Only the gateway publishes a host port. The API and frontend share the edge network; the API and model workers share a separate internal network. The API container has no ONNX mount, and every worker mounts only its own artifact plus shared immutable metadata. Local mode retains the in-process registry for development and parity tests.
+
 ## Inference flow
 
 ```mermaid
@@ -43,7 +58,7 @@ sequenceDiagram
   E-->>A: Evidence without substituted values
 ```
 
-Sessions are protected individually because ONNX Runtime session execution is not generally safe through concurrent mutable calls. Independent sessions can run on separate blocking workers. The recorded CPU benchmark found ONNX internal-thread contention made sequential inference faster; deployment tuning can choose scheduling based on hardware while keeping each model independent.
+In local mode, sessions are protected individually because ONNX Runtime session execution is not generally safe through concurrent mutable calls. In production, process/container isolation is the primary boundary. Independent request deadlines turn an unreachable or stuck worker into one model-specific `inference_error`; evidence from responsive workers is still returned. The recorded CPU benchmark found ONNX internal-thread contention made sequential inference faster, so container CPU limits remain hardware-tunable.
 
 ## Evidence orchestration
 

@@ -1,5 +1,6 @@
 target
 .env
-.git
-reports/benchmark_latest.json
-tests/fixtures/actual_*
+reports
+docs
+models
+*.md

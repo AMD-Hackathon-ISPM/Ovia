@@ -18,7 +18,23 @@ pub struct Config {
     pub allowed_origins: Vec<String>,
     pub max_image_bytes: usize,
     pub max_image_pixels: u64,
+    pub inference: InferenceConfig,
     pub llm: Option<LlmConfig>,
+}
+
+#[derive(Clone, Debug)]
+pub enum InferenceConfig {
+    Local,
+    Remote(RemoteInferenceConfig),
+}
+
+#[derive(Clone, Debug)]
+pub struct RemoteInferenceConfig {
+    pub biomedclip_url: String,
+    pub convnext_url: String,
+    pub xgboost_url: String,
+    pub unet_url: String,
+    pub timeout: Duration,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
@@ -71,12 +87,31 @@ impl Config {
         .map(str::to_owned)
         .collect();
         let llm = llm_from_env()?;
+        let inference = match value("OVIA_INFERENCE_MODE", "local")
+            .to_ascii_lowercase()
+            .as_str()
+        {
+            "local" => InferenceConfig::Local,
+            "remote" => InferenceConfig::Remote(RemoteInferenceConfig {
+                biomedclip_url: value("BIOMEDCLIP_WORKER_URL", "http://model-biomedclip:8091"),
+                convnext_url: value("CONVNEXT_WORKER_URL", "http://model-convnext:8092"),
+                xgboost_url: value("XGBOOST_WORKER_URL", "http://model-xgboost:8093"),
+                unet_url: value("UNETPP_WORKER_URL", "http://model-unetpp:8094"),
+                timeout: Duration::from_secs(parse("MODEL_WORKER_TIMEOUT_SECONDS", 45)?),
+            }),
+            _ => {
+                return Err(AppError::config(
+                    "OVIA_INFERENCE_MODE must be local or remote",
+                ));
+            }
+        };
         Ok(Self {
             host,
             port,
             execution_provider,
             allowed_origins,
             llm,
+            inference,
             models_dir: PathBuf::from(value("OVIA_MODELS_DIR", "models")),
             max_image_bytes: parse("MAX_IMAGE_BYTES", 15 * 1024 * 1024)?,
             max_image_pixels: parse("MAX_IMAGE_PIXELS", 24_000_000)?,
@@ -98,6 +133,7 @@ impl Config {
             max_image_bytes: 2_000_000,
             max_image_pixels: 2_000_000,
             llm: None,
+            inference: InferenceConfig::Local,
         }
     }
 }

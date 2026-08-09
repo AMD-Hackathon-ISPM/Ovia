@@ -66,11 +66,12 @@ On Windows, set `ORT_DYLIB_PATH` for tests. Frontend checks are `npm run build` 
 ## Docker
 
 ```text
-docker compose --profile cpu up --build
-docker compose --profile gpu up --build
+cd ..
+docker compose up -d --build
+docker compose -f compose.yaml -f compose.gpu.yaml up -d --build
 ```
 
-Both profiles mount `./models` read-only, run with a read-only root filesystem, and do not bake `.env` or secrets into an image. The GPU image requires a host/NVIDIA Container Toolkit compatible with the configured CUDA runtime base.
+The root Compose stack runs the API without ONNX models and starts one internal container per model. Each worker mounts only its own artifact read-only, and per-worker HTTP deadlines keep a failed or stuck model from blocking the API. The GPU overlay requires a host/NVIDIA Container Toolkit compatible with the configured CUDA runtime base. See [`../docs/deployment.md`](../docs/deployment.md).
 
 ## Privacy and limitations
 

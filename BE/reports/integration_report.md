@@ -61,3 +61,15 @@ Generated 2026-08-09 (Asia/Jakarta) from the completed local build and verificat
 29. **Combined inference latency.** Warm CPU inference-only: sequential median 1054.02 ms / p95 1096.34 ms; concurrent median 1148.96 ms / p95 1274.26 ms, six samples after two warmups. Live Featherless latency was not measured because no key/model was configured; mock/deterministic orchestration overhead was negligible relative to ONNX and full backend image requests completed in about a few seconds in debug/container checks.
 
 30. **Remaining limitations.** No clinical validation or external-site validation; source pipelines rely primarily on public datasets; no live Featherless or CUDA runtime verification; model calibration/tasks are heterogeneous and intentionally not fused; CPU concurrency needs hardware-specific tuning; Pillow/OpenCV versus Rust interpolation has small measurable differences despite exact geometry; no tumor/malignancy classifier exists; API is stateless with no durable audit database; rate limiting/authentication/TLS are expected at a deployment gateway; the new backend and browser E2E commands are not yet wired into hosted CI.
+
+## Container-isolation addendum
+
+31. **Production topology.** Root `compose.yaml` now builds and runs Nginx, the production React bundle, the stateless Axum orchestration API, and four internal model workers. The API uses remote inference mode and loads no ONNX artifacts. Each worker validates, loads, and warms exactly one model.
+
+32. **Isolation controls.** Worker host ports are not published; the model network is internal. Each worker mounts only its own ONNX artifact plus the immutable manifest/metadata read-only. Containers use read-only root filesystems, tmpfs scratch paths, `no-new-privileges`, PID limits, health checks, restart policies, and service-specific CPU/memory ceilings.
+
+33. **Live distributed verification.** The complete CPU stack built successfully and all seven services became healthy. A multipart request sent through Nginx returned `success` for all four models and a 640x480 U-Net++ mask. Fault injection then stopped U-Net++; the same public endpoint still returned HTTP 200 with BiomedCLIP, ConvNeXt, and XGBoost `success` and only U-Net++ `inference_error`. The worker was restored and returned healthy.
+
+34. **Optional GPU deployment.** `compose.gpu.yaml` switches the three image-model workers to the CUDA image/provider while XGBoost remains CPU. The overlay validates successfully but was not runtime-exercised because no NVIDIA runtime was available.
+
+35. **Persistence decision.** Postgres, Redis, and MinIO are intentionally absent. The current request path is transient and defines no accounts, durable jobs, stored results, or object retention. Adding unused persistence would create a sensitive-data retention surface without improving current model isolation.

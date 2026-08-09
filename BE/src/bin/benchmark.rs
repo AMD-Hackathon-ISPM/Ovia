@@ -55,6 +55,7 @@ fn config() -> Config {
         max_image_bytes: 2_000_000,
         max_image_pixels: 2_000_000,
         llm: None,
+        inference: ovia_backend::config::InferenceConfig::Local,
     }
 }
 
