@@ -22,4 +22,17 @@ Start with [`AGENT.md`](AGENT.md) — it routes to every canonical document and 
 docker compose up -d --build
 ```
 
-Open `http://localhost`. The stack includes an Nginx gateway, production React frontend, Rust API, and one isolated container per model. See [container deployment](docs/deployment.md) for CPU/GPU commands, failure behavior, security boundaries, and configuration.
+The loopback gateway is available at `http://127.0.0.1:8088/ovia/`. In production, the existing HTTPS server proxies that path to `https://daffatrg.me/ovia/` without replacing the website at `/`. The stack includes an Nginx gateway, production React frontend, Rust API, and one isolated container per model. See [container deployment](docs/deployment.md) for CPU/GPU commands, the host Nginx snippet, failure behavior, and security boundaries.
+
+## Playwright end-to-end tests
+
+With the Compose stack running:
+
+```powershell
+cd test
+npm install
+npx playwright install chromium
+npm test
+```
+
+The local specs cover both browser flows and the public backend contract. The complete `test/` workspace is excluded by `.gitignore` as a local verification harness.

@@ -56,8 +56,14 @@ interface SubmissionContextType {
 const SubmissionContext = createContext<SubmissionContextType | null>(null);
 
 async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
-  const response = await fetch(dataUrl);
-  return response.blob();
+  const match = /^data:([^;,]+);base64,(.*)$/s.exec(dataUrl);
+  if (!match) throw new Error("The uploaded image preview is invalid.");
+  const binary = window.atob(match[2]);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return new Blob([bytes], { type: match[1] });
 }
 
 function finite(value:string):number|undefined{const parsed=Number(value);return value!==""&&Number.isFinite(parsed)?parsed:undefined}

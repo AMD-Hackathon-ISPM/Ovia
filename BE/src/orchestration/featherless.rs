@@ -64,7 +64,6 @@ impl OpenAiCompatibleProvider {
             ],
             temperature: self.config.temperature,
             max_tokens: self.config.max_tokens,
-            response_format: json!({"type":"json_object"}),
         };
         let response = self
             .client
@@ -89,7 +88,7 @@ impl OpenAiCompatibleProvider {
             .first()
             .map(|c| c.message.content.as_str())
             .ok_or_else(|| LlmError::Invalid("missing message content".into()))?;
-        serde_json::from_str(content).map_err(|e| LlmError::Invalid(e.to_string()))
+        parse_draft(content)
     }
 }
 
@@ -156,7 +155,6 @@ struct ChatRequest<'a> {
     messages: Vec<Message<'a>>,
     temperature: f32,
     max_tokens: u32,
-    response_format: Value,
 }
 #[derive(Serialize)]
 struct Message<'a> {
@@ -174,4 +172,38 @@ struct Choice {
 #[derive(Deserialize)]
 struct ResponseMessage {
     content: String,
+}
+
+fn parse_draft(content: &str) -> Result<NarrativeDraft, LlmError> {
+    let trimmed = content.trim();
+    if let Ok(draft) = serde_json::from_str(trimmed) {
+        return Ok(draft);
+    }
+    let object = trimmed
+        .find('{')
+        .zip(trimmed.rfind('}'))
+        .filter(|(start, end)| start < end)
+        .map(|(start, end)| &trimmed[start..=end])
+        .ok_or_else(|| LlmError::Invalid("LLM response did not contain a JSON object".into()))?;
+    serde_json::from_str(object).map_err(|e| LlmError::Invalid(e.to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn accepts_json_wrapped_in_markdown_or_reasoning_text() {
+        let content = r#"Reasoning omitted.
+```json
+{"summary":"Review evidence","evidence":[],"agreement":{"status":"insufficient","explanation":"One source is available"},"limitations":["Research use only"],"recommended_next_step":"Review with a clinician"}
+```"#;
+        let draft = parse_draft(content).unwrap();
+        assert_eq!(draft.summary, "Review evidence");
+    }
+
+    #[test]
+    fn rejects_a_response_without_a_json_object() {
+        assert!(parse_draft("I cannot return structured output.").is_err());
+    }
 }

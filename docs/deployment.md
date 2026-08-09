@@ -3,8 +3,8 @@
 The production topology runs the browser UI and orchestration API separately from four isolated ONNX workers. Only the Nginx gateway publishes a host port.
 
 ```text
-browser -> gateway:80 -> frontend:8080
-                    -> api:8080 -> model-biomedclip:8091
+browser -> existing HTTPS Nginx /ovia -> 127.0.0.1:8088 -> gateway:8080 -> frontend:8080
+                                                                      -> api:8080 -> model-biomedclip:8091
                                 -> model-convnext:8092
                                 -> model-xgboost:8093
                                 -> model-unetpp:8094
@@ -20,10 +20,32 @@ From the repository root:
 Copy-Item .env.example .env
 docker compose up -d --build
 docker compose ps
-Invoke-RestMethod http://localhost/api/v1/health
+Invoke-RestMethod http://127.0.0.1:8088/ovia/api/v1/health
 ```
 
-Open `http://localhost`. Change `OVIA_HTTP_PORT` in `.env` if port 80 is occupied.
+Open `http://127.0.0.1:8088/ovia/` for a local check. The gateway binds to loopback only, so it does not take over ports 80/443 or the existing website.
+
+## Existing `daffatrg.me` HTTPS server
+
+The existing site is the sibling Ferry Compose project. Its `backend/nginx.conf` now proxies `/ovia/` before the existing frontend catch-all, and its Nginx service joins the external `ovia-ingress` network. The Ovia gateway owns the `ovia-gateway` alias on that network. Keep the existing site's `location /` unchanged.
+
+Start Ovia first so Compose creates `ovia-ingress`, then recreate Ferry's Nginx service:
+
+```bash
+cd /path/to/Ovia
+docker compose up -d --build
+
+cd /path/to/Ferry
+docker compose config --quiet
+docker compose up -d --force-recreate nginx
+```
+
+The public URLs become:
+
+- Application: `https://daffatrg.me/ovia/`
+- Health: `https://daffatrg.me/ovia/api/v1/health`
+
+Cloudflare/DNS and TLS continue to terminate through the existing Ferry website configuration. The Ovia Compose gateway is not exposed publicly. `deploy/nginx/daffatrg.me-ovia.location.conf` contains the same location block as a deployment reference.
 
 Useful operations:
 
@@ -51,7 +73,7 @@ The overlay enables CUDA for BiomedCLIP, ConvNeXt, and U-Net++. XGBoost stays on
 - Model workers are not connected to the edge network and expose no host ports.
 - Nginx enforces the upload ceiling and basic browser security headers.
 - Uploaded images, answers, masks, and outputs are transient. The stack does not persist them.
-- TLS should terminate at a trusted ingress or load balancer in front of port 80 for internet-facing deployment.
+- TLS terminates at the existing `daffatrg.me` Nginx/Cloudflare path; the Ovia Compose gateway remains loopback-only.
 
 ## Why there is no database, Redis, or MinIO
 
@@ -60,3 +82,5 @@ The current application has no account, job queue, durable result, or object-sto
 ## Failure behavior
 
 The API probes all workers during startup. Compose starts it only after every worker is healthy. After startup, an individual worker can fail independently: the API continues returning HTTP 200 with the affected evidence status set to `inference_error`, while successful evidence from other models remains available. `restart: unless-stopped` restarts crashed services; request timeouts protect against processes that remain alive but stop responding.
+
+Optional LLM settings are loaded from the ignored `BE/.env` file. Use `LLM_PROVIDER=featherless` with a valid compatible base URL, API key, and model name; use `disabled` to keep deterministic-only orchestration.

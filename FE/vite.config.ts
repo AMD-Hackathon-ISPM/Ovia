@@ -18,6 +18,7 @@ const svgImportPlugin = () => ({
 
 // https://vite.dev/config/
 export default defineConfig(() => ({
+  base: process.env.VITE_OVIA_BASE_PATH || '/',
   optimizeDeps: {
     // These packages ship as ESM — exclude from pre-bundling to reduce memory pressure
     exclude: ['@base-ui/react'],
