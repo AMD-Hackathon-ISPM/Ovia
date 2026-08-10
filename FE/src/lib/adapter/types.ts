@@ -120,6 +120,33 @@ export interface InspectionRegion {
   height: number;
 }
 
+export type ModelStatus = "success" | "unavailable" | "invalid_input" | "inference_error";
+export interface ImageModelEvidence {
+  modelId:string; modelVersion:string; task:string; status:ModelStatus;
+  probability:number|null; decisionThreshold:number|null; thresholdMet:boolean|null;
+  predictedLabel:string|null; classProbabilities:Record<string,number>; warnings:string[];
+}
+export interface ClinicalEvidence {
+  modelId:string; modelVersion:string; status:ModelStatus; suppliedFeatureCount:number;
+  rawProbability:number|null; calibratedProbability:number|null; screeningThreshold:number;
+  screeningThresholdMet:boolean|null; warnings:string[];
+}
+export interface SegmentationEvidence {
+  modelId:string; modelVersion:string; status:ModelStatus; segmentationAvailable:boolean;
+  maskWidth:number|null; maskHeight:number|null; foregroundFraction:number|null;
+  connectedComponentCount:number|null; maskPngDataUrl:string|null; threshold:number; warnings:string[];
+}
+export interface OviaEvidence {
+  imageModels:{biomedclip:ImageModelEvidence;convnextTiny:ImageModelEvidence};
+  clinicalModel:ClinicalEvidence; segmentation:SegmentationEvidence; warnings:string[];
+}
+export interface NarrativeEvidence {source:string;finding:string;importance:string}
+export interface OrchestrationResult {
+  status:"success"|"unavailable"|"invalid_response";provider:string;model:string|null;summary:string|null;
+  evidence:NarrativeEvidence[];agreement:{status:"concordant"|"mixed"|"insufficient";explanation:string};
+  limitations:string[];recommendedNextStep:string;disclaimer:string;warnings:string[];
+}
+
 export type SubmitOutcome =
   | {
       status: "ok";
@@ -127,6 +154,10 @@ export type SubmitOutcome =
       receivedAt: number;
       contractVersion: string;
       panels: ResultPanels;
+      /** Deterministic, authoritative backend model evidence. */
+      evidence?: OviaEvidence;
+      /** Optional interpretation. This never replaces deterministic evidence. */
+      orchestration?: OrchestrationResult;
       /** Absent when the model produced no localisation output. */
       inspection?: InspectionRegion[];
     }

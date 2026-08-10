@@ -6,272 +6,33 @@ import { Label } from "./ui/label";
 import { useSubmission } from "@/context/SubmissionContext";
 import SubmissionErrorNotice from "./SubmissionErrorNotice";
 
-const BRAND = "#D6697C";
-const BRAND_LIGHT = "#FADADD";
-const TEXT_COLOR = "#535861";
-const DISABLED_COLOR = "#76787B";
+const BRAND="#D6697C";const TEXT="#535861";
 
-function bmiCategory(bmi: number): string {
-  if (bmi < 18.5) return "Underweight";
-  if (bmi < 25) return "Normal weight";
-  if (bmi < 30) return "Overweight";
-  return "Obese";
+export default function ReviewConsent(){
+  const {state,dispatch,goToStep}=useFormContext();const {state:submission,submit}=useSubmission();const {data}=state;const c=data.clinical;
+  const height=Number(c.heightCm)/100;const bmi=Number(c.weightKg)/(height*height);
+  const factors=[
+    [c.weightGain,"Weight gain"],[c.hairGrowth,"Increased hair growth"],[c.skinDarkening,"Skin darkening"],[c.hairLoss,"Hair loss"],[c.pimples,"Persistent acne"],[c.fastFood,"Frequent fast food"],[c.regularExercise,"Regular exercise"],
+  ].filter(([selected])=>selected).map(([,label])=>label as string);
+  const optional=[
+    ["Cycle length",c.cycleLengthDays,"days"],["Blood pressure",c.systolicBp&&c.diastolicBp?`${c.systolicBp}/${c.diastolicBp}`:"","mmHg"],["FSH",c.fshMiuMl,"mIU/mL"],["LH",c.lhMiuMl,"mIU/mL"],["TSH",c.tshMiuL,"mIU/L"],["AMH",c.amhNgMl,"ng/mL"],
+  ].filter(([,value])=>value);
+  return <div className="w-full space-y-5">
+    <SubmissionErrorNotice forClass="retryable_error" />
+    <div><h2 className="text-2xl font-bold" style={{color:TEXT}}>Review</h2><p className="mt-1 text-sm text-muted-foreground">Confirm the transient data that will be sent for this analysis.</p></div>
+    <section className="overflow-hidden rounded-2xl border" style={{borderColor:BRAND}}>
+      <header className="flex items-center justify-between px-5 py-3 text-white" style={{backgroundColor:BRAND}}><h3 className="font-bold">Clinical model inputs</h3><button type="button" onClick={()=>goToStep("clinical")} aria-label="Edit clinical information"><Pencil className="h-4 w-4" /></button></header>
+      <div className="space-y-4 p-5 text-sm" style={{color:TEXT}}>
+        <div className="grid grid-cols-3 gap-3"><Fact value={data.age} label="years"/><Fact value={Number.isFinite(bmi)?bmi.toFixed(1):"—"} label="BMI"/><Fact value={c.cycleRegularity||"Unknown"} label="cycle"/></div>
+        {optional.length>0&&<ul className="space-y-1">{optional.map(([label,value,unit])=><li key={label}>• {label}: {value} {unit}</li>)}</ul>}
+        <p><strong>Reported factors:</strong> {factors.length?factors.join(", "):"none selected"}</p>
+        <p className="text-xs text-muted-foreground">Unentered optional model features remain missing and are handled by the deployed preprocessing contract.</p>
+      </div>
+    </section>
+    <section className="flex items-center justify-between gap-3 rounded-2xl border p-4" style={{borderColor:BRAND}}><div className="flex items-center gap-3">{data.ultrasoundImage?<img src={data.ultrasoundImage} alt="Attached ultrasound preview" className="h-16 w-16 rounded-lg object-cover"/>:<div className="flex h-16 w-16 items-center justify-center rounded-lg bg-muted"><Upload className="h-5 w-5"/></div>}<div><p className="font-bold">Ultrasound</p><p className="text-xs text-muted-foreground">{data.ultrasoundImage?"Attached for three image models":"Not attached; image models will be unavailable"}</p></div></div><Button onClick={()=>goToStep("ultrasound")} className="rounded-full text-white" style={{backgroundColor:BRAND}}>Change</Button></section>
+    <div className="flex items-start gap-3 rounded-xl bg-muted p-4"><Checkbox id="consent" checked={data.consentGiven} onCheckedChange={v=>dispatch({type:"SET_CONSENT",value:v===true})}/><Label htmlFor="consent" className="text-sm leading-relaxed">I confirm these inputs are accurate and consent to this one-time screening-support analysis. Ovia does not retain the image in browser storage.</Label></div>
+    <div className="flex gap-3"><Button onClick={()=>goToStep("ultrasound")} className="h-12 flex-1 text-white" style={{backgroundColor:BRAND}}>Back</Button><Button onClick={submit} disabled={!data.consentGiven||submission.status==="submitting"} className="h-12 flex-1 text-white" style={{backgroundColor:BRAND}}>Submit</Button></div>
+  </div>;
 }
 
-const MENOPAUSAL_LABEL: Record<string, string> = {
-  pre: "Pre-Menopausal",
-  "post-natural": "Post-Menopausal (natural)",
-  "post-surgical": "Post-Menopausal (surgical/induced)",
-};
-
-export default function ReviewConsent() {
-  const { state, dispatch, goToStep } = useFormContext();
-  const { state: submission, submit } = useSubmission();
-  const { data } = state;
-  const inFlight = submission.status === "submitting";
-  const { clinical } = data;
-
-  const heightM = parseFloat(clinical.heightCm) / 100;
-  const weightKg = parseFloat(clinical.weightKg);
-  const bmiVal =
-    heightM > 0 && weightKg > 0
-      ? (weightKg / (heightM * heightM)).toFixed(1)
-      : null;
-
-  const flaggedSymptoms = clinical.symptoms;
-
-  return (
-    <div className="w-full space-y-5">
-      <SubmissionErrorNotice forClass="retryable_error" />
-
-      <div>
-        <h2 className="text-2xl font-bold" style={{ color: TEXT_COLOR }}>
-          Review
-        </h2>
-        <p className="text-sm mt-1" style={{ color: TEXT_COLOR, opacity: 0.58 }}>
-          Check that every entry is accurate — this is what the model will
-          use.
-        </p>
-      </div>
-
-      <div
-        className="rounded-2xl border overflow-hidden"
-        style={{ borderColor: BRAND }}
-      >
-        <div
-          className="flex items-center justify-between px-5 py-3"
-          style={{ backgroundColor: BRAND }}
-        >
-          <h3 className="text-sm font-bold text-white">
-            Clinical Information
-          </h3>
-          <button
-            type="button"
-            onClick={() => goToStep("clinical")}
-            aria-label="Edit clinical information"
-          >
-            <Pencil className="w-4 h-4 text-white" />
-          </button>
-        </div>
-
-        <div className="p-5 space-y-4">
-          <div className="grid grid-cols-3 gap-3">
-            <div
-              className="rounded-2xl p-4 text-center"
-              style={{ backgroundColor: BRAND_LIGHT }}
-            >
-              <p className="text-xl font-bold" style={{ color: BRAND }}>
-                {data.age || "—"}
-              </p>
-              <p className="text-xs" style={{ color: BRAND }}>
-                years old
-              </p>
-            </div>
-
-            <div
-              className="rounded-2xl p-4 text-center"
-              style={{ backgroundColor: BRAND_LIGHT }}
-            >
-              <p className="text-xl font-bold" style={{ color: BRAND }}>
-                {bmiVal || "—"}
-              </p>
-              <p className="text-xs" style={{ color: BRAND }}>
-                BMI
-              </p>
-            </div>
-
-            <div
-              className="rounded-2xl p-4 text-center flex items-center justify-center"
-              style={{ backgroundColor: BRAND_LIGHT }}
-            >
-              <p
-                className="text-sm font-bold leading-tight"
-                style={{ color: BRAND }}
-              >
-                {MENOPAUSAL_LABEL[clinical.menopausalStatus] ||
-                  clinical.menopausalStatus ||
-                  "—"}
-              </p>
-            </div>
-          </div>
-
-          <ul className="space-y-2">
-            <li className="flex items-start gap-2 text-sm" style={{ color: TEXT_COLOR }}>
-              <span
-                className="w-1.5 h-1.5 rounded-full mt-1.5 shrink-0"
-                style={{ backgroundColor: BRAND }}
-              />
-              <span>
-                Menarche at {clinical.ageMenarche || "—"} ·{" "}
-                {clinical.cycleRegularity === "regular"
-                  ? "Regular"
-                  : clinical.cycleRegularity === "irregular"
-                  ? "Irregular"
-                  : "—"}{" "}
-                cycles
-              </span>
-            </li>
-
-            <li className="flex items-start gap-2 text-sm" style={{ color: TEXT_COLOR }}>
-              <span
-                className="w-1.5 h-1.5 rounded-full mt-1.5 shrink-0"
-                style={{ backgroundColor: BRAND }}
-              />
-              <span>
-                {clinical.hormonalUse && clinical.hormonalUse !== "none"
-                  ? `Hormonal use: ${clinical.hormonalUse.replace(/-/g, " ")}`
-                  : "No hormonal contraceptive or HRT use"}
-              </span>
-            </li>
-
-            {clinical.pregnancies && parseInt(clinical.pregnancies) > 0 && (
-              <li className="flex items-start gap-2 text-sm" style={{ color: TEXT_COLOR }}>
-                <span
-                  className="w-1.5 h-1.5 rounded-full mt-1.5 shrink-0"
-                  style={{ backgroundColor: BRAND }}
-                />
-                <span>
-                  {clinical.pregnancies} pregnancy
-                  {parseInt(clinical.pregnancies) > 1 ? "ies" : "y"}
-                  {clinical.births && parseInt(clinical.births) > 0
-                    ? `, ${clinical.births} birth${
-                        parseInt(clinical.births) > 1 ? "s" : ""
-                      }`
-                    : ""}
-                </span>
-              </li>
-            )}
-
-            {clinical.familyHistory && (
-              <li className="flex items-start gap-2 text-sm" style={{ color: TEXT_COLOR }}>
-                <span
-                  className="w-1.5 h-1.5 rounded-full mt-1.5 shrink-0"
-                  style={{ backgroundColor: BRAND }}
-                />
-                <span>Family history of ovarian or breast cancer</span>
-              </li>
-            )}
-          </ul>
-
-          {flaggedSymptoms.length > 0 && (
-            <div>
-              <h4
-                className="text-sm font-bold mb-3"
-                style={{ color: BRAND }}
-              >
-                Symptoms Flagged
-              </h4>
-              <div className="space-y-2">
-                {flaggedSymptoms.map((s) => (
-                  <div
-                    key={s}
-                    className="rounded-xl px-4 py-3 text-sm"
-                    style={{ backgroundColor: "#F5EEDA", color: TEXT_COLOR }}
-                  >
-                    {s}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div
-        className="rounded-2xl border p-4 flex items-center justify-between gap-3"
-        style={{ borderColor: BRAND }}
-      >
-        <div className="flex items-center gap-3 min-w-0">
-          {data.ultrasoundImage ? (
-            <img
-              src={data.ultrasoundImage}
-              alt="Ultrasound"
-              className="w-16 h-16 rounded-lg object-cover shrink-0 bg-muted"
-            />
-          ) : (
-            <div className="w-16 h-16 rounded-lg bg-muted flex items-center justify-center shrink-0">
-              <Upload className="w-5 h-5 text-muted-foreground" />
-            </div>
-          )}
-          <div className="min-w-0">
-            <p className="text-sm font-bold" style={{ color: TEXT_COLOR }}>
-              Ultrasound
-            </p>
-            <p className="text-xs text-muted-foreground truncate">
-              {data.ultrasoundImage ? "Image uploaded" : "No image uploaded"}
-            </p>
-          </div>
-        </div>
-        <Button
-          onClick={() => goToStep("ultrasound")}
-          className="h-9 px-4 text-xs rounded-full font-bold text-white border-none shrink-0"
-          style={{ backgroundColor: BRAND }}
-        >
-          Change
-        </Button>
-      </div>
-
-      <div className="flex items-start gap-3 bg-muted rounded-xl p-4">
-        <Checkbox
-          id="consent"
-          checked={data.consentGiven}
-          onCheckedChange={(v) =>
-            dispatch({ type: "SET_CONSENT", value: v === true })
-          }
-          className="mt-0.5 h-5 w-5 shrink-0"
-        />
-        <Label
-          htmlFor="consent"
-          className="text-sm italic leading-relaxed text-muted-foreground"
-        >
-          I confirm the information above is accurate and consent to proceed
-          with analysis.
-        </Label>
-      </div>
-
-      <div className="flex gap-3">
-        <Button
-          onClick={() => goToStep("ultrasound")}
-          className="flex-1 h-12 text-base rounded-xl font-bold text-white border-none"
-          style={{ backgroundColor: BRAND }}
-        >
-          Back
-        </Button>
-        {/* Duplicate guard is enforced in SubmissionContext as well as here,
-            so a double press can never send two requests. */}
-        <Button
-          onClick={submit}
-          disabled={!data.consentGiven || inFlight}
-          className="flex-1 h-12 text-base rounded-xl font-bold text-white border-none"
-          style={{
-            backgroundColor:
-              data.consentGiven && !inFlight ? BRAND : DISABLED_COLOR,
-            opacity: data.consentGiven && !inFlight ? 1 : 0.37,
-          }}
-        >
-          Submit
-        </Button>
-      </div>
-    </div>
-  );
-}
+function Fact({value,label}:{value:string;label:string}){return <div className="rounded-xl bg-[#FADADD] p-3 text-center"><p className="font-bold" style={{color:BRAND}}>{value||"—"}</p><p className="text-xs" style={{color:BRAND}}>{label}</p></div>}

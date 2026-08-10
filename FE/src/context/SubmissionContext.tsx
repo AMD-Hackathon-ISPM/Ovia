@@ -9,6 +9,7 @@ import {
 } from "react";
 import { useFormContext } from "./FormContext";
 import { getAdapter, type OviaError, type SubmitOutcome } from "@/lib/adapter";
+import type { ClinicalData } from "./FormContext";
 
 /**
  * Submission state and the error taxonomy routing (FE-4).
@@ -21,7 +22,7 @@ import { getAdapter, type OviaError, type SubmitOutcome } from "@/lib/adapter";
  * every attempt and never setting it on an error.
  */
 
-export type SubmitStage = "preparing" | "uploading" | "processing" | "slow";
+export type SubmitStage = "preparing" | "uploading" | "image" | "clinical" | "segmenting" | "synthesizing" | "slow";
 
 export type SubmissionState =
   | { status: "idle" }
@@ -34,7 +35,10 @@ export type SubmissionState =
 const STAGE_SCHEDULE: ReadonlyArray<{ at: number; stage: SubmitStage }> = [
   { at: 0, stage: "preparing" },
   { at: 400, stage: "uploading" },
-  { at: 1200, stage: "processing" },
+  { at: 1200, stage: "image" },
+  { at: 2600, stage: "clinical" },
+  { at: 3900, stage: "segmenting" },
+  { at: 5600, stage: "synthesizing" },
 ];
 
 /** §7: 45 s soft (stage label changes), 90 s hard abort -> retryable error. */
@@ -54,6 +58,19 @@ const SubmissionContext = createContext<SubmissionContextType | null>(null);
 async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
   const response = await fetch(dataUrl);
   return response.blob();
+}
+
+function finite(value:string):number|undefined{const parsed=Number(value);return value!==""&&Number.isFinite(parsed)?parsed:undefined}
+function modelAnswers(age:string,clinical:ClinicalData):Record<string,number>{
+  const entries:Record<string,number|undefined>={
+    age_years:finite(age),height_cm:finite(clinical.heightCm),weight_kg:finite(clinical.weightKg),
+    cycle_regularity_code:clinical.cycleRegularity==="regular"?2:clinical.cycleRegularity==="irregular"?4:undefined,
+    cycle_length_days:finite(clinical.cycleLengthDays),systolic_bp_mmhg:finite(clinical.systolicBp),diastolic_bp_mmhg:finite(clinical.diastolicBp),
+    fsh_miu_ml:finite(clinical.fshMiuMl),lh_miu_ml:finite(clinical.lhMiuMl),tsh_miu_l:finite(clinical.tshMiuL),amh_ng_ml:finite(clinical.amhNgMl),
+    weight_gain:Number(clinical.weightGain),hair_growth:Number(clinical.hairGrowth),skin_darkening:Number(clinical.skinDarkening),hair_loss:Number(clinical.hairLoss),
+    pimples:Number(clinical.pimples),fast_food:Number(clinical.fastFood),regular_exercise:Number(clinical.regularExercise),
+  };
+  return Object.fromEntries(Object.entries(entries).filter((entry):entry is [string,number]=>entry[1]!==undefined));
 }
 
 export function SubmissionProvider({ children }: { children: ReactNode }) {
@@ -140,7 +157,7 @@ export function SubmissionProvider({ children }: { children: ReactNode }) {
 
         const outcome = await getAdapter().submit(
           {
-            answers: { age: data.age, ...data.clinical },
+            answers: modelAnswers(data.age,data.clinical),
             image,
             requestId: crypto.randomUUID(),
             schemaVersion: "ovia-v1",

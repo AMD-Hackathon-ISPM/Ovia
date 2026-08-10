@@ -20,14 +20,16 @@ const TEXT_COLOR = "#535861";
  */
 
 export const INSPECTION_CAPTION =
-  "Highlighted areas show where the model looked. They do not explain the result, do not indicate what was found, and are not a measurement.";
+  "The optional overlay shows an AI-segmented lesion region. It does not establish pathology, tumor type, malignancy, or cancer.";
 
 export default function InspectionFigure({
   src,
   regions,
+  maskDataUrl,
 }: {
   src: string;
   regions: readonly InspectionRegion[];
+  maskDataUrl?: string | null;
 }) {
   const [showOverlay, setShowOverlay] = useState(false);
   const [opacity, setOpacity] = useState(0.5);
@@ -35,7 +37,7 @@ export default function InspectionFigure({
   const sliderId = useId();
   const altTextId = useId();
 
-  const hasRegions = regions.length > 0;
+  const hasRegions = regions.length > 0 || Boolean(maskDataUrl);
 
   return (
     <figure className="mt-6 w-full">
@@ -57,6 +59,7 @@ export default function InspectionFigure({
         overlay={
           showOverlay && hasRegions ? (
             <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+              {maskDataUrl && <img src={maskDataUrl} alt="" className="absolute inset-0 h-full w-full object-contain" style={{opacity}} />}
               {regions.map((region) => (
                 <div
                   key={region.id}
@@ -67,6 +70,7 @@ export default function InspectionFigure({
                     width: `${region.width * 100}%`,
                     height: `${region.height * 100}%`,
                     opacity,
+                    borderColor:"#F8A6B5",
                   }}
                 >
                   <span className="absolute -top-0.5 left-0 -translate-y-full bg-white/90 px-1 text-[10px] font-medium text-neutral-900">
@@ -94,13 +98,13 @@ export default function InspectionFigure({
             className="text-sm font-medium"
             style={{ color: TEXT_COLOR }}
           >
-            Show model inspection overlay
+            Show AI-segmented lesion overlay
           </label>
         </div>
 
         {!hasRegions && (
           <p className="text-sm" style={{ color: TEXT_COLOR, opacity: 0.58 }}>
-            No inspection output was produced for this image.
+            No segmentation output was produced for this image.
           </p>
         )}
 

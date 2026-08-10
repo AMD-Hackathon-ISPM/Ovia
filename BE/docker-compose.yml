@@ -1,0 +1,43 @@
+services:
+  ovia-cpu:
+    profiles: ["cpu"]
+    build:
+      context: .
+      target: runtime-cpu
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      OVIA_MODELS_DIR: /app/models
+      ORT_EXECUTION_PROVIDER: cpu
+    ports: ["8080:8080"]
+    volumes:
+      - ./models:/app/models:ro
+    read_only: true
+    tmpfs: [/tmp]
+    restart: unless-stopped
+
+  ovia-gpu:
+    profiles: ["gpu"]
+    build:
+      context: .
+      target: runtime-gpu
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      OVIA_MODELS_DIR: /app/models
+      ORT_EXECUTION_PROVIDER: cuda
+    ports: ["8080:8080"]
+    volumes:
+      - ./models:/app/models:ro
+    read_only: true
+    tmpfs: [/tmp]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped

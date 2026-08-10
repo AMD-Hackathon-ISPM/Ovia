@@ -6,6 +6,7 @@ import ImageViewer from "./ImageViewer";
 
 const BRAND = "#D6697C";
 const TEXT_COLOR = "#535861";
+const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
 
 export default function UltrasoundUpload() {
   const { state, dispatch, goToNextStep, goToStep } = useFormContext();
@@ -13,15 +14,18 @@ export default function UltrasoundUpload() {
     state.data.ultrasoundImage
   );
   const inputRef = useRef<HTMLInputElement>(null);
+  const [error,setError]=useState("");
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if(!["image/png","image/jpeg","image/webp"].includes(file.type)||file.size>MAX_IMAGE_BYTES){setError("Choose a valid PNG, JPEG, or WebP image no larger than 15 MB.");return}
     const reader = new FileReader();
     reader.onload = () => {
       const dataUrl = reader.result as string;
-      setPreview(dataUrl);
-      dispatch({ type: "SET_ULTRASOUND_IMAGE", value: dataUrl });
+      const probe=new Image();
+      probe.onload=()=>{if(probe.naturalWidth*probe.naturalHeight>24_000_000){setError("The decoded image dimensions are too large.");return}setError("");setPreview(dataUrl);dispatch({ type: "SET_ULTRASOUND_IMAGE", value: dataUrl });};
+      probe.onerror=()=>setError("The selected file could not be decoded as an image.");probe.src=dataUrl;
     };
     reader.readAsDataURL(file);
   };
@@ -48,7 +52,7 @@ export default function UltrasoundUpload() {
           style={{ color: TEXT_COLOR, opacity: 0.58 }}
         >
           Recommended for the most accurate result. You can skip if
-          unavailable.
+          unavailable. Image models run only when an image is attached.
         </p>
       </div>
 
@@ -106,6 +110,7 @@ export default function UltrasoundUpload() {
         onChange={handleFileChange}
         className="hidden"
       />
+      {error&&<p role="alert" className="text-sm text-destructive">{error}</p>}
 
       {!preview && (
         <div className="flex items-start gap-3 bg-[#F5EEDA] rounded-xl p-4">
@@ -113,9 +118,9 @@ export default function UltrasoundUpload() {
             <AlertCircle className="w-4 h-4 text-[#8A7B4F]" strokeWidth={0} fill="currentColor" />
           </div>
           <p className="text-sm text-[#6B5F3E] leading-relaxed">
-            Skipping this step prevents ovarian cyst and tumor screening and
-            lowers your result's confidence, making it more likely to over- or
-            under-estimate your risk.
+            Skipping this step means BiomedCLIP morphology, ConvNeXt appearance,
+            and U-Net++ segmentation evidence will be unavailable. The clinical
+            model can still run independently.
           </p>
         </div>
       )}

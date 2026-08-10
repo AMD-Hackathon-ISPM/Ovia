@@ -1,0 +1,43 @@
+{
+  "fixture": "synthetic_ultrasound.png",
+  "python_runtime": {
+    "onnxruntime": "1.27.0",
+    "opencv": "4.13.0"
+  },
+  "biomedclip": {
+    "logit": -1.2990373373031616,
+    "probability": 0.21432707609303941
+  },
+  "convnext": {
+    "logits": [
+      -0.8478989601135254,
+      -0.7552855610847473,
+      0.255506694316864,
+      0.4482320547103882,
+      0.2323848307132721
+    ],
+    "probabilities": [
+      0.06754909455776215,
+      0.07574503868818283,
+      0.26434069871902466,
+      0.3354751169681549,
+      0.25689005851745605
+    ]
+  },
+  "xgboost": {
+    "raw_probability": 0.5635806322097778,
+    "calibrated_probability": 0.46557573154318804
+  },
+  "unetpp": {
+    "mask_width": 640,
+    "mask_height": 480,
+    "foreground_pixels": 30485,
+    "foreground_fraction": 0.09923502604166666,
+    "bounding_box": {
+      "x_min": 230,
+      "y_min": 119,
+      "x_max": 526,
+      "y_max": 318
+    }
+  }
+}

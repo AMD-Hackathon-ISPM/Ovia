@@ -1,0 +1,89 @@
+openapi: 3.1.0
+info:
+  title: Ovia Production Integration API
+  version: 1.0.0
+  description: Investigational screening-support API; not a diagnostic service.
+servers:
+  - url: http://127.0.0.1:8080
+paths:
+  /api/v1/health:
+    get:
+      operationId: health
+      responses:
+        "200":
+          description: All model artifacts loaded and warmed.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Health"}
+  /api/v1/models:
+    get:
+      operationId: models
+      responses:
+        "200": {description: Non-secret loaded model inventory}
+  /api/v1/analyze:
+    post:
+      operationId: analyze
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [payload]
+              properties:
+                payload:
+                  type: string
+                  contentMediaType: application/json
+                image:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: Independent deterministic evidence and optional interpretation.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AnalyzeResponse"}
+        "400": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+        "422": {$ref: "#/components/responses/Error"}
+components:
+  responses:
+    Error:
+      description: Structured safe error
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [error]
+            properties:
+              error:
+                type: object
+                required: [code, message, details]
+                properties:
+                  code: {type: string}
+                  message: {type: string}
+                  details: {type: object}
+  schemas:
+    Health:
+      type: object
+      required: [status, service, contract_version, manifest_version, models_ready, onnxruntime_api, execution_providers, llm_configured]
+      properties:
+        status: {const: ok}
+        service: {const: ovia-backend}
+        contract_version: {const: ovia-v1}
+        manifest_version: {type: string}
+        models_ready: {type: integer}
+        onnxruntime_api: {type: string}
+        execution_providers: {type: array, items: {type: string}}
+        llm_configured: {type: boolean}
+    AnalyzeResponse:
+      type: object
+      required: [contract_version, request_id, analysis_id, panels, evidence, orchestration]
+      properties:
+        contract_version: {const: ovia-v1}
+        request_id: {type: string, format: uuid}
+        analysis_id: {type: string, format: uuid}
+        panels: {type: object}
+        inspection: {type: array, items: {type: object}}
+        evidence: {type: object}
+        orchestration: {type: object}

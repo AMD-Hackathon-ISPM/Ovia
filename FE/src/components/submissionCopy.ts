@@ -12,8 +12,11 @@ import type { OviaError } from "@/lib/adapter";
 
 export const STAGE_COPY: Record<SubmitStage, string> = {
   preparing: "Preparing your answers",
-  uploading: "Sending your answers",
-  processing: "Analysing",
+  uploading: "Uploading ultrasound",
+  image: "Analyzing image evidence",
+  clinical: "Analyzing clinical evidence",
+  segmenting: "Segmenting a candidate lesion region",
+  synthesizing: "Synthesizing evidence",
   slow: "Still analysing — this is taking longer than usual",
 };
 

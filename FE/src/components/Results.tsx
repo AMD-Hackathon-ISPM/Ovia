@@ -1,189 +1,49 @@
-import { useMemo } from "react";
 import { useFormContext } from "../context/FormContext";
-import { evaluateRisks, type RiskResult } from "../lib/riskLogic";
 import { useSubmission } from "@/context/SubmissionContext";
+import type { ImageModelEvidence, ModelStatus, PanelState, ConditionResult } from "@/lib/adapter";
 import InspectionFigure from "./InspectionFigure";
 
-const BRAND = "#D6697C";
-const TEXT_COLOR = "#535861";
-const GRAY_HEADER = "#B9BCC0";
-const GRAY_TEXT = "#9CA3AF";
+const BRAND="#D6697C";const TEXT="#535861";
+const pct=(value:number|null)=>value===null?"Not available":`${(value*100).toFixed(1)}%`;
+const label=(value:string|null)=>value?value.toLowerCase().replaceAll("_"," "):"Not available";
 
-const RISK_LEVEL_COLOR: Record<string, string> = {
-  Low: "#4CAF6D",
-  Moderate: "#E8A93A",
-  Higher: "#E15B4F",
-};
+export default function Results(){
+  const {state:form}=useFormContext();const {state}=useSubmission();
+  if(state.status!=="success")return <p role="alert">No completed analysis is available.</p>;
+  const {outcome}=state;const evidence=outcome.evidence;const narrative=outcome.orchestration;
+  return <div className="space-y-6" aria-live="polite">
+    <header><p className="text-xs font-bold uppercase tracking-wider" style={{color:BRAND}}>Investigational screening support</p><h1 className="text-2xl font-bold" style={{color:TEXT}}>Analysis results</h1><p className="mt-1 text-sm text-muted-foreground">Analysis ID: {outcome.requestId}</p></header>
 
-function UterusIcon({ color }: { color: string }) {
-  return (
-    <svg width="72" height="60" viewBox="0 0 72 60" fill="none">
-      <path
-        d="M28 18 C18 14, 10 16, 8 24 C6 30, 10 34, 14 32"
-        stroke={color}
-        strokeWidth="2.5"
-        fill="none"
-        strokeLinecap="round"
-      />
-      <circle cx="9" cy="30" r="4" fill={color} opacity="0.5" />
-
-      <path
-        d="M44 18 C54 14, 62 16, 64 24 C66 30, 62 34, 58 32"
-        stroke={color}
-        strokeWidth="2.5"
-        fill="none"
-        strokeLinecap="round"
-      />
-      <circle cx="63" cy="30" r="4" fill={color} opacity="0.5" />
-
-      <path
-        d="M28 18 C28 30, 24 34, 24 42 C24 50, 30 54, 36 54 C42 54, 48 50, 48 42 C48 34, 44 30, 44 18 C44 14, 40 12, 36 12 C32 12, 28 14, 28 18 Z"
-        fill={color}
-        opacity="0.35"
-        stroke={color}
-        strokeWidth="2"
-      />
-    </svg>
-  );
-}
-
-const CONDITION_TITLE: Record<string, string> = {
-  "ovarian-cyst": "Ovarian Cyst",
-  pcos: "PCOS",
-  "ovarian-tumor": "Ovarian Tumor",
-};
-
-export default function Results() {
-  const { state } = useFormContext();
-  const { state: submission } = useSubmission();
-  const { clinical } = state.data;
-
-  const results = useMemo(() => evaluateRisks(clinical), [clinical]);
-
-  return (
-    <div className="space-y-6" aria-live="polite">
-      <div>
-        <h1 className="text-2xl font-bold" style={{ color: TEXT_COLOR }}>
-          Results
-        </h1>
-        <p
-          className="text-sm mt-1"
-          style={{ color: TEXT_COLOR, opacity: 0.58 }}
-        >
-          A risk score with the reasoning behind it. Not a diagnosis.
-        </p>
-      </div>
-
-      <div className="grid grid-cols-3 gap-3">
-        {results.map((result) => (
-          <RiskCard key={result.id} result={result} />
-        ))}
-      </div>
-
-      <RecommendedAction results={results} />
-
-      {/* FE-8. Rendered after the recommendation, and optional: hiding or
-          removing it changes nothing above it. */}
-      {state.data.ultrasoundImage && submission.status === "success" && (
-        <InspectionFigure
-          src={state.data.ultrasoundImage}
-          regions={submission.outcome.inspection ?? []}
-        />
-      )}
-    </div>
-  );
-}
-
-function RiskCard({ result }: { result: RiskResult }) {
-  const isAvailable = result.level === "Low" || result.level === "Moderate" || result.level === "Higher";
-  const title = CONDITION_TITLE[result.id] || result.title;
-  const headerColor = isAvailable ? BRAND : GRAY_HEADER;
-  const iconColor = isAvailable ? BRAND : "#D1D5DB";
-  const levelColor = isAvailable ? RISK_LEVEL_COLOR[result.level] : GRAY_TEXT;
-
-  return (
-    <div
-      className="rounded-2xl border overflow-hidden flex flex-col"
-      style={{ borderColor: isAvailable ? BRAND : "#E5E5E5" }}
-    >
-      <div className="px-3 py-3" style={{ backgroundColor: headerColor }}>
-        <h3 className="text-xs font-bold text-white text-center leading-tight">
-          {title}
-        </h3>
-      </div>
-
-      <div className="flex flex-col items-center gap-2 p-3 flex-1">
-        <div className="py-1">
-          <UterusIcon color={iconColor} />
+    {evidence?<>
+      <section aria-labelledby="model-output" className="space-y-3"><div><h2 id="model-output" className="text-lg font-bold" style={{color:TEXT}}>Model output</h2><p className="text-sm text-muted-foreground">These values come directly from deterministic backend inference. Different models answer different questions and their probabilities are not combined.</p></div>
+        <div className="grid gap-3 md:grid-cols-2">
+          <ModelCard title="BiomedCLIP morphology" model={evidence.imageModels.biomedclip}><Metric name="Output" value={label(evidence.imageModels.biomedclip.predictedLabel)}/><Metric name="Probability" value={pct(evidence.imageModels.biomedclip.probability)}/></ModelCard>
+          <ModelCard title="ConvNeXt ultrasound appearance" model={evidence.imageModels.convnextTiny}><Metric name="Highest-probability class" value={label(evidence.imageModels.convnextTiny.predictedLabel)}/><Metric name="Class probability" value={pct(evidence.imageModels.convnextTiny.probability)}/></ModelCard>
+          <EvidenceCard title="XGBoost clinical screening" status={evidence.clinicalModel.status} version={evidence.clinicalModel.modelVersion} warnings={evidence.clinicalModel.warnings}><Metric name="Calibrated screening probability" value={pct(evidence.clinicalModel.calibratedProbability)}/><Metric name="Screening threshold met" value={yesNo(evidence.clinicalModel.screeningThresholdMet)}/><Metric name="Fields supplied" value={String(evidence.clinicalModel.suppliedFeatureCount)}/></EvidenceCard>
+          <EvidenceCard title="U-Net++ lesion segmentation" status={evidence.segmentation.status} version={evidence.segmentation.modelVersion} warnings={evidence.segmentation.warnings}><Metric name="Segmentation available" value={evidence.segmentation.segmentationAvailable?"Yes":"No"}/><Metric name="Foreground area" value={pct(evidence.segmentation.foregroundFraction)}/><Metric name="Separated regions" value={evidence.segmentation.connectedComponentCount?.toString()??"Not available"}/></EvidenceCard>
         </div>
+        <div className="rounded-xl border bg-muted/40 p-4 text-sm" style={{color:TEXT}}><strong>Ovarian tumor classification is not reported.</strong> The deployed U-Net++ identifies a candidate lesion region; it does not establish tumor type, pathology, malignancy, or cancer.</div>
+      </section>
 
-        <div className="text-center">
-          <p
-            className="text-[10px] uppercase tracking-wider"
-            style={{ color: isAvailable ? BRAND : GRAY_TEXT, opacity: isAvailable ? 1 : 0.7 }}
-          >
-            Risk assessment:
-          </p>
-          <p
-            className="text-lg font-bold uppercase"
-            style={{ color: levelColor }}
-          >
-            {isAvailable ? result.level : "–"}
-          </p>
-        </div>
+      <section aria-labelledby="interpretation" className="rounded-2xl border p-5" style={{borderColor:BRAND}}><p className="text-xs font-bold uppercase tracking-wider" style={{color:BRAND}}>LLM interpretation</p><h2 id="interpretation" className="mt-1 text-lg font-bold" style={{color:TEXT}}>{narrative?.status==="success"?"Synthesized evidence context":"Interpretation unavailable"}</h2>
+        {narrative?.summary&&<p className="mt-2 text-sm leading-relaxed">{narrative.summary}</p>}
+        <p className="mt-2 text-sm">{narrative?.agreement.explanation??"Deterministic evidence is shown without an LLM narrative."}</p>
+        {(narrative?.evidence.length??0)>0&&<ul className="mt-3 space-y-2">{narrative!.evidence.map((item,index)=><li key={`${item.source}-${index}`} className="rounded-xl bg-muted p-3 text-sm"><strong>{item.finding}</strong><span className="block text-muted-foreground">{item.importance}</span></li>)}</ul>}
+        {(narrative?.limitations.length??0)>0&&<div className="mt-4"><h3 className="font-bold">Limitations</h3><ul className="list-disc pl-5 text-sm">{narrative!.limitations.map(item=><li key={item}>{item}</li>)}</ul></div>}
+        <div className="mt-4 rounded-xl bg-[#F9DCE2] p-4 text-sm"><strong>Recommended next step:</strong> {narrative?.recommendedNextStep??"Review these screening-support outputs with a qualified clinician."}</div>
+      </section>
 
-        <p
-          className="text-xs leading-relaxed text-center"
-          style={{ color: isAvailable ? TEXT_COLOR : GRAY_TEXT }}
-        >
-          {result.explanation}
-        </p>
-      </div>
-    </div>
-  );
+      {evidence.warnings.length>0&&<section><h2 className="font-bold">Evidence notes</h2><ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted-foreground">{evidence.warnings.map(item=><li key={item}>{item}</li>)}</ul></section>}
+    </>:<FixtureResults panels={outcome.panels}/>}
+
+    {form.data.ultrasoundImage&&<InspectionFigure src={form.data.ultrasoundImage} regions={outcome.inspection??[]} maskDataUrl={evidence?.segmentation.maskPngDataUrl??null}/>}
+    <p className="rounded-xl bg-muted p-4 text-sm font-medium">{narrative?.disclaimer??"Investigational screening support only; not a diagnosis. Review all outputs with a qualified clinician."}</p>
+  </div>;
 }
 
-function RecommendedAction({ results }: { results: RiskResult[] }) {
-  const hasHigher = results.some((r) => r.level === "Higher");
-  const hasModerate = results.some((r) => r.level === "Moderate");
-  const unavailable = results.filter(
-    (r) => r.level !== "Low" && r.level !== "Moderate" && r.level !== "Higher"
-  );
-
-  let boldLead: string;
-  let rest: string;
-
-  if (hasHigher) {
-    boldLead = "Higher risk identified.";
-    rest =
-      "We recommend consulting a gynecologist or endocrinologist for further evaluation. Bringing a record of your symptoms and this summary to your appointment may be helpful.";
-  } else if (hasModerate) {
-    boldLead = "Moderate risk of PCOS identified.";
-    rest =
-      "We recommend consulting a gynecologist or endocrinologist for further evaluation, which may include hormone panel testing (LH, FSH, testosterone) to confirm.";
-  } else {
-    boldLead = "Low risk based on your reported symptoms and cycle history.";
-    rest = "Continue monitoring your cycle regularly.";
-  }
-
-  return (
-    <div className="rounded-2xl border p-5" style={{ borderColor: BRAND }}>
-      <h3 className="text-base font-bold mb-2" style={{ color: BRAND }}>
-        Recommended Action
-      </h3>
-      <p className="text-sm leading-relaxed" style={{ color: TEXT_COLOR }}>
-        <span className="font-bold">{boldLead}</span> {rest}
-      </p>
-
-      {unavailable.length > 0 && (
-        <p className="text-sm leading-relaxed mt-3" style={{ color: TEXT_COLOR }}>
-          {unavailable.map((r) => CONDITION_TITLE[r.id] || r.title).join(" and ")}{" "}
-          could not be screened. {unavailable.length > 1 ? "These conditions" : "This condition"}{" "}
-          require{unavailable.length === 1 ? "s" : ""} an ultrasound image for
-          assessment. We recommend adding an ultrasound scan to complete your
-          screening.
-        </p>
-      )}
-    </div>
-  );
-}
+function EvidenceCard({title,status,version,warnings,children}:{title:string;status:ModelStatus;version:string;warnings:string[];children:React.ReactNode}){return <article className="rounded-2xl border p-4"><div className="flex items-start justify-between gap-2"><h3 className="font-bold" style={{color:TEXT}}>{title}</h3><Status value={status}/></div><p className="mt-1 break-all text-[11px] text-muted-foreground">{version}</p>{status==="success"?<dl className="mt-4 space-y-2">{children}</dl>:<p className="mt-4 text-sm">No output was substituted for unavailable evidence.</p>}{warnings.map(item=><p key={item} className="mt-3 text-xs text-muted-foreground">{item}</p>)}</article>}
+function ModelCard({title,model,children}:{title:string;model:ImageModelEvidence;children:React.ReactNode}){return <EvidenceCard title={title} status={model.status} version={model.modelVersion} warnings={model.warnings}>{children}</EvidenceCard>}
+function Metric({name,value}:{name:string;value:string}){return <div className="flex items-start justify-between gap-3"><dt className="text-sm text-muted-foreground">{name}</dt><dd className="text-right text-sm font-semibold capitalize">{value}</dd></div>}
+function Status({value}:{value:ModelStatus}){return <span className="rounded-full bg-muted px-2 py-1 text-[11px] font-bold uppercase tracking-wide">{value.replaceAll("_"," ")}</span>}
+function yesNo(value:boolean|null){return value===null?"Not available":value?"Yes":"No"}
+function FixtureResults({panels}:{panels:{pcos:PanelState<ConditionResult>;ovarianCyst:PanelState<ConditionResult>;ovarianTumor:PanelState<ConditionResult>}}){return <section className="rounded-2xl border p-5"><h2 className="font-bold">Demo fixture output</h2><p className="mt-2 text-sm text-muted-foreground">This offline fixture has no production evidence envelope. Switch VITE_OVIA_ADAPTER to live to use the Rust ONNX backend.</p><pre className="mt-3 overflow-auto rounded-lg bg-muted p-3 text-xs">{JSON.stringify(panels,null,2)}</pre></section>}
