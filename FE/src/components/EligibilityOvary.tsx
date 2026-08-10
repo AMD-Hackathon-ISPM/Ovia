@@ -69,14 +69,6 @@ export default function EligibilityOvary() {
           No
         </Button>
       </div>
-
-      <div className="mt-auto px-8 pb-6 pt-8">
-        <p className="text-xs text-muted-foreground leading-relaxed">
-          Ovia is a screening research prototype. It does not diagnose or
-          rule out PCOS or any other ovaries-related conditions. Every
-          participant should receive confirmatory evaluation.
-        </p>
-      </div>
     </div>
   );
 }

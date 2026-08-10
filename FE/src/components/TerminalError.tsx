@@ -82,14 +82,6 @@ export default function TerminalError() {
           Start over
         </Button>
       </div>
-
-      <div className="mt-auto px-8 pt-8 pb-6">
-        <p className="text-xs leading-relaxed text-muted-foreground">
-          Ovia is a screening research prototype. It does not diagnose or rule
-          out PCOS or any other ovaries-related conditions. Every participant
-          should receive confirmatory evaluation.
-        </p>
-      </div>
     </div>
   );
 }
